@@ -1,4 +1,3 @@
-import * as ScreenCapture from 'expo-screen-capture';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -35,14 +34,10 @@ type DbState =
   | { status: 'ready'; disclaimerAccepted: boolean }
   | { status: 'error'; message: string; lostKey: boolean };
 
+// Las capturas de pantalla se bloquean en Android con FLAG_SECURE desde
+// plugins/withSecureWindow.js, antes de que cargue esta interfaz.
 export default function App() {
   const [lockAfterMs, setLockAfterMs] = useState(DEFAULT_LOCK_AFTER_MS);
-
-  // Bloquea capturas y grabación de pantalla, y oculta la vista previa en
-  // "apps recientes" (FLAG_SECURE en Android).
-  useEffect(() => {
-    ScreenCapture.preventScreenCaptureAsync().catch(() => {});
-  }, []);
 
   return (
     <SafeAreaProvider>

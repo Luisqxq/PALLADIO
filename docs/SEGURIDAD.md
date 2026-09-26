@@ -58,6 +58,13 @@ reglas de la sección 6.
 llamadas, almacenamiento externo, dibujar sobre otras apps, lista de apps
 instaladas, y cualquier otro no listado arriba.
 
+**Nota sobre Firebase:** la librería de notificaciones de Expo incluye el
+cliente de Firebase Cloud Messaging (para notificaciones push). Palladio no lo
+usa: no hay archivo de configuración de Firebase, así que no se inicializa, y
+sin permiso de internet no podría conectarse. Los recordatorios son alarmas
+locales del teléfono. Su receptor expuesto está protegido por un permiso que
+solo tiene Google Play Services.
+
 ## 4. Bloqueo de la app
 
 - `expo-local-authentication`: huella o, si no hay, el PIN/patrón del teléfono.
@@ -66,8 +73,8 @@ instaladas, y cualquier otro no listado arriba.
 
 ## 5. Pantalla
 
-- `expo-screen-capture` activa `FLAG_SECURE` (sus permisos opcionales de
-  detectar capturas y leer imágenes quedan bloqueados): no se pueden hacer capturas ni
+- `plugins/withSecureWindow.js` activa `FLAG_SECURE` en la ventana principal
+  desde que se crea (antes de mostrar cualquier dato), sin librerías ni permisos: no se pueden hacer capturas ni
   grabar pantalla, y la vista en "apps recientes" aparece en blanco.
 - Excepción: si tú decides compartir el reporte PDF con tu médico, se genera
   el archivo en ese momento.

@@ -67,6 +67,8 @@ jobs:
           # Cada compilación sube el número de versión para poder actualizar la app.
           sed -i -E "s/versionCode [0-9]+/versionCode ${GITHUB_RUN_NUMBER}/" android/app/build.gradle
           grep -n "versionCode" android/app/build.gradle
+          # La protección de pantalla (FLAG_SECURE) debe estar en MainActivity.
+          grep -q "FLAG_SECURE" android/app/src/main/java/pe/palladio/health/MainActivity.kt
 
       - name: Compilar APK de producción
         working-directory: android

@@ -93,7 +93,8 @@
         {
           "color": "#2F6B55"
         }
-      ]
+      ],
+      "./plugins/withSecureWindow.js"
     ]
   }
 }
