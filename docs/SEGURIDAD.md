@@ -48,9 +48,13 @@ agregar por su cuenta (`android.blockedPermissions` en `app.json`).
 | `POST_NOTIFICATIONS` | Recordatorios de pastillas. Se pide solo al crear el primer recordatorio. |
 | `SCHEDULE_EXACT_ALARM` / `RECEIVE_BOOT_COMPLETED` | Que el recordatorio suene a la hora exacta y se restaure tras reiniciar el teléfono. |
 | `USE_BIOMETRIC` | Desbloquear la app con huella. |
-| `INTERNET` | Solo para consultar MedlinePlus. Desactivable en Ajustes ("modo sin conexión"). |
+| `USE_FINGERPRINT` / `VIBRATE` | Huella en Android antiguos; vibración del recordatorio. |
 
-**Bloqueados:** cámara, micrófono, ubicación, contactos, calendario, SMS,
+**Versión 1: sin `INTERNET`.** La app no puede conectarse a ninguna red. El
+permiso se agregará recién en la versión 2 (consulta a MedlinePlus), con las
+reglas de la sección 6.
+
+**Bloqueados:** internet y estado de red, cámara, micrófono, ubicación, contactos, calendario, SMS,
 llamadas, almacenamiento externo, dibujar sobre otras apps, lista de apps
 instaladas, y cualquier otro no listado arriba.
 
@@ -62,12 +66,13 @@ instaladas, y cualquier otro no listado arriba.
 
 ## 5. Pantalla
 
-- `expo-screen-capture` activa `FLAG_SECURE`: no se pueden hacer capturas ni
+- `expo-screen-capture` activa `FLAG_SECURE` (sus permisos opcionales de
+  detectar capturas y leer imágenes quedan bloqueados): no se pueden hacer capturas ni
   grabar pantalla, y la vista en "apps recientes" aparece en blanco.
 - Excepción: si tú decides compartir el reporte PDF con tu médico, se genera
   el archivo en ese momento.
 
-## 6. Red
+## 6. Red (desde la versión 2)
 
 - Único destino permitido: servicios oficiales de MedlinePlus
   (`medlineplus.gov`, `wsearch.nlm.nih.gov`, `connect.medlineplus.gov`).
@@ -77,7 +82,7 @@ instaladas, y cualquier otro no listado arriba.
   Nunca datos personales, registros ni identificadores del teléfono.
 - Sin publicidad, sin analítica, sin rastreadores, sin reportes de errores a terceros.
 
-## 7. Respaldo (exportar / importar)
+## 7. Respaldo (exportar / importar) — versión 3
 
 - `android.allowBackup: false`: Android no copia los datos a la nube por su cuenta.
 - El respaldo manual es un archivo cifrado con una **contraseña que eliges tú**:
@@ -116,7 +121,16 @@ instaladas, y cualquier otro no listado arriba.
 
 ## 11. Proceso de revisión
 
-En cada etapa, antes de entregar el APK:
+Automático en cada compilación (`.github/workflows/android.yml`):
+
+- `npm audit` (falla con vulnerabilidades altas o críticas), tipos y pruebas.
+- `scripts/verify_apk.py` lee el `AndroidManifest.xml` final **dentro del
+  APK** y falla si hay un permiso fuera de la lista, `INTERNET`,
+  `allowBackup` activo, tráfico sin cifrar, APK depurable o un componente
+  expuesto a otras apps sin protección.
+- Las acciones de GitHub están fijadas por hash de commit.
+
+Manual, en cada etapa, antes de entregar el APK:
 
 - [ ] Revisar el `AndroidManifest.xml` final: permisos, `allowBackup`, componentes exportados.
 - [ ] `npm audit` limpio (sin altas/críticas).
