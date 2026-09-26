@@ -143,33 +143,23 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Iniciar emulador Android 14
-        run: |
-          SDK="$ANDROID_HOME/cmdline-tools/latest/bin"
-          echo "y" | "$SDK/sdkmanager" --install "emulator" "platform-tools" "system-images;android-34;google_apis;x86_64" > /dev/null
-          echo "no" | "$SDK/avdmanager" create avd -n prueba -k "system-images;android-34;google_apis;x86_64" -d pixel_6
-          "$ANDROID_HOME/emulator/emulator" -avd prueba -no-window -no-audio -no-boot-anim -no-snapshot \
-            -gpu swiftshader_indirect -camera-back none -camera-front none > emulator.log 2>&1 &
-          "$ANDROID_HOME/platform-tools/adb" wait-for-device
-          for i in $(seq 1 180); do
-            if [ "$("$ANDROID_HOME/platform-tools/adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
-              echo "Emulador listo"; break
-            fi
-            sleep 2
-          done
-          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-
-      - name: Prueba de humo
-        run: bash scripts/smoke_test.sh "${{ needs.build.outputs.apk_name }}"
+      - name: Emulador Android 14 y prueba de humo
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -camera-back none -camera-front none
+          script: bash scripts/smoke_test.sh "${{ needs.build.outputs.apk_name }}"
 
       - name: Guardar evidencia si falla
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: smoke-test-evidencia
-          path: |
-            smoke/
-            emulator.log
+          path: smoke/
           retention-days: 7
 
   release:
