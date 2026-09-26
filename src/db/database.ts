@@ -77,9 +77,11 @@ async function migrate(database: SQLite.SQLiteDatabase) {
   let version = row?.user_version ?? 0;
   while (version < MIGRATIONS.length) {
     const next = version + 1;
-    await database.withExclusiveTransactionAsync(async (txn) => {
-      await txn.execAsync(MIGRATIONS[version]);
-      await txn.execAsync(`PRAGMA user_version = ${next};`);
+    // withTransactionAsync usa ESTA conexión (ya tiene la llave). No usar
+    // withExclusiveTransactionAsync: abre otra conexión sin la llave.
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(MIGRATIONS[version]);
+      await database.execAsync(`PRAGMA user_version = ${next};`);
     });
     version = next;
   }
