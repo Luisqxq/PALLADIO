@@ -32,16 +32,11 @@ Resumen (detalle en [`docs/SEGURIDAD.md`](docs/SEGURIDAD.md)):
 
 ### Instalar en tu Android
 
-1. Ve a **Releases** en este repositorio y descarga el último
-   `palladio-health-X.Y.Z.apk`.
-2. Comprueba que su SHA-256 coincide con el publicado en el Release.
-3. Permite "instalar apps desconocidas" solo para esa instalación, instala y
-   vuelve a desactivarlo. Deja Google Play Protect activado.
+Guía paso a paso, desde el teléfono: [`docs/INSTALAR.md`](docs/INSTALAR.md).
 
-Para publicar un Release: **Actions → Android → Run workflow → marcar
-"publicar"**. Requiere que tu llave de firma esté configurada como secretos del
-repositorio (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
-`ANDROID_KEY_ALIAS`).
+En resumen: configurar la llave de firma como secretos del repositorio →
+**Actions → Android → Run workflow** con "publicar" → descargar el APK desde
+**Releases** e instalarlo.
 
 ### Desarrollo
 
