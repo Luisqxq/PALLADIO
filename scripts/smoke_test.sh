@@ -95,8 +95,20 @@ if adb logcat -d | grep -q "FATAL EXCEPTION"; then
   fail "Hubo un error fatal en el registro del sistema"
 fi
 
-echo "== Comprobando FLAG_SECURE (captura en negro)"
-adb exec-out screencap -p > "$OUT/captura.png"
-python3 scripts/png_is_black.py "$OUT/captura.png"
+echo "== Comprobando FLAG_SECURE"
+# 1) La ventana de la app debe tener la marca SECURE.
+adb shell dumpsys window windows > "$OUT/ventanas.txt"
+if grep -A15 "Window{.*$PKG/$PKG.MainActivity}" "$OUT/ventanas.txt" | grep -q "SECURE"; then
+  echo "✓ La ventana de la app tiene FLAG_SECURE"
+else
+  fail "La ventana de la app no tiene FLAG_SECURE"
+fi
+# 2) Una captura debe salir vacía (Android la rechaza) o en negro.
+adb exec-out screencap -p > "$OUT/captura.png" || true
+if [ ! -s "$OUT/captura.png" ] || ! head -c 8 "$OUT/captura.png" | grep -q "PNG"; then
+  echo "✓ Android rechazó la captura de pantalla"
+else
+  python3 scripts/png_is_black.py "$OUT/captura.png"
+fi
 
 echo "✓ Prueba de humo superada"
