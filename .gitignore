@@ -1,0 +1,28 @@
+# --- Secretos: NUNCA subir al repositorio (es público) ---
+# Llave de firma del APK y sus contraseñas
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+credentials.json
+keystore.properties
+# Variables de entorno
+.env
+.env.*
+# Respaldos personales de la app (contienen datos de salud)
+*.palladio
+*.palladio-backup
+
+# --- Dependencias y compilados ---
+node_modules/
+.expo/
+dist/
+web-build/
+android/app/build/
+*.apk
+*.aab
+
+# --- Sistema ---
+.DS_Store
+*.log
