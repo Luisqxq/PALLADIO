@@ -12,3 +12,5 @@ versión nueva.
 | 4 | Guía → Alimentación | El menú debería ser distinto cada semana. | Anotado |
 | 5 | Nuevo módulo | Agregar monitoreo del colon irritable (el usuario lo padece). | Anotado |
 | 6 | Perfil de salud | Luxofractura de tibia y peroné hace ~8 meses. Considerar todas sus condiciones juntas y dar precauciones acordes (ejercicios, remedios, alimentación, alertas). | Anotado |
+| 7 | Toda la app / primer uso | **Varios usuarios, cada uno en su teléfono.** La app debe servir a cualquier persona: al instalarla, cada usuario arma su propio perfil con sus condiciones, y solo ve el seguimiento, la guía y las alertas de *sus* condiciones. Lo de un usuario (p. ej. prostatitis, colon, fractura) no debe aparecer para otro. | Anotado |
+| 8 | Nuevo perfil (2.º usuario) | Usuaria con **síndrome de ovario poliquístico** y **dolores de cabeza frecuentes**. El neurólogo no dio un diagnóstico preciso; ella lo relaciona con la parte visual. Le pasan aun sin usar pantallas, pero **empeoran con pantallas, sobre todo la laptop**. En etapa de recopilación de información. | Anotado |
