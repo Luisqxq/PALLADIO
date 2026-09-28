@@ -34,7 +34,10 @@ wait_for_text() { # texto, segundos
     # El emulador es lento y a veces otra app del sistema muestra
     # "no responde": se cierra el aviso con "Esperar" y se sigue.
     if echo "$ui" | grep -q "isn't responding\|no responde"; then
-      echo "(aviso de 'no responde' de otra app del emulador: se pulsa Esperar)"
+      local who
+      who=$(echo "$ui" | grep -o 'text="[^"]*\(isn.t responding\|no responde\)[^"]*"' | head -1)
+      echo "(aviso del sistema: $who)"
+      if echo "$who" | grep -qi "palladio"; then fail "Palladio Health no responde (ANR)"; fi
       tap_text "Wait" "$ui" || tap_text "Esperar" "$ui" || true
     fi
     sleep 1
@@ -51,6 +54,10 @@ fail() {
 
 echo "== Dejando que el emulador se estabilice"
 sleep 30
+
+# Oculta los avisos de "no responde" de las apps del emulador (lento en CI).
+# Un ANR de Palladio se detecta igual en el registro del sistema, más abajo.
+adb shell settings put global hide_error_dialogs 1 || true
 
 echo "== Configurando PIN del teléfono"
 adb shell locksettings set-pin "$PIN"
@@ -115,6 +122,10 @@ adb shell pidof "$PKG" >/dev/null || fail "La app se cerró"
 if adb logcat -d | grep -q "FATAL EXCEPTION"; then
   fail "Hubo un error fatal en el registro del sistema"
 fi
+if adb logcat -d | grep -q "ANR in $PKG"; then
+  fail "Palladio Health dejó de responder (ANR) durante la prueba"
+fi
+adb logcat -d | grep "ANR in" | sed 's/^/(ANR de otra app del emulador) /' | head -5 || true
 
 echo "== Comprobando FLAG_SECURE"
 # 1) La ventana de la app debe tener la marca SECURE.
