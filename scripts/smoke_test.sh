@@ -99,19 +99,32 @@ wait_for_text "Cuánto dolor sentiste" 20 || fail "No se abrió la pantalla Hoy 
 echo "✓ Pantalla Hoy abierta"
 
 echo "== Búsqueda real en MedlinePlus (el emulador tiene internet)"
+tap_contains() { # pulsa el primer elemento cuyo texto contiene $1
+  local bounds x1 y1 x2 y2
+  bounds=$(ui_dump | tr '>' '\n' | grep "text=\"[^\"]*$1[^\"]*\"" | grep -o 'bounds="[^"]*"' | head -1 || true)
+  [ -n "$bounds" ] || return 1
+  read -r x1 y1 x2 y2 <<<"$(echo "$bounds" | grep -o '[0-9]\+' | tr '\n' ' ')"
+  adb shell input tap $(((x1 + x2) / 2)) $(((y1 + y2) / 2))
+}
+medline_step() { # descripción, texto
+  if tap_contains "$2"; then echo "  ✓ $1"; sleep 2; return 0; fi
+  echo "  ✗ $1: no se encontró '$2'. Textos en pantalla:"
+  ui_dump | tr '>' '\n' | grep -o 'text="[^"]\{2,60\}"' | head -25 | sed 's/^/      /'
+  return 1
+}
 MEDLINE="no probado"
-if tap_text "Guía" "$(ui_dump)" && sleep 2 && tap_text "📚 MedlinePlus" "$(ui_dump)" && sleep 2 \
-  && tap_scrolling "Activar consultas a MedlinePlus" 3 && sleep 2 && tap_scrolling "Prostatitis" 3; then
+if medline_step "Pestaña Guía" "Guía" \
+  && medline_step "Sección MedlinePlus" "MedlinePlus" \
+  && medline_step "Activar consultas" "Activar consultas" \
+  && medline_step "Tema sugerido" "Prostatitis"; then
   if wait_for_text "Ver más" 40; then
     MEDLINE="ok"
-    echo "✓ MedlinePlus devolvió temas y la app los mostró como texto"
-    ui_dump | tr '>' '\n' | grep -o 'text="[^"]\{3,80\}"' | head -12
+    echo "✓ MedlinePlus devolvió temas y la app los mostró como texto:"
+    ui_dump | tr '>' '\n' | grep -o 'text="[^"]\{3,90\}"' | head -15 | sed 's/^/      /'
   else
     MEDLINE="sin resultados"
-    ui_dump | tr '>' '\n' | grep -o 'text="[^"]\{3,160\}"' | head -20
+    ui_dump | tr '>' '\n' | grep -o 'text="[^"]\{3,160\}"' | head -20 | sed 's/^/      /'
   fi
-else
-  echo "(no se pudo navegar hasta MedlinePlus)"
 fi
 echo "Resultado MedlinePlus: $MEDLINE"
 # Depende de un servicio externo: se informa pero no bloquea la publicación.
