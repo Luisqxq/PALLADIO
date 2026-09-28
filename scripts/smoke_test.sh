@@ -120,7 +120,8 @@ if medline_step "Pestaña Guía" "Guía" \
   if wait_for_text "Ver más" 40; then
     MEDLINE="ok"
     echo "✓ MedlinePlus devolvió temas y la app los mostró como texto:"
-    ui_dump | tr '>' '\n' | grep -o 'text="[^"]\{3,90\}"' | head -15 | sed 's/^/      /'
+    # Se omiten las pestañas y los temas sugeridos: se muestran los resultados.
+    ui_dump | tr '>' '\n' | grep -o 'text="[^"]\{3,90\}"' | sed -n '/Dolor pélvico/,$p' | sed -n '2,16p' | sed 's/^/      /'
   else
     MEDLINE="sin resultados"
     ui_dump | tr '>' '\n' | grep -o 'text="[^"]\{3,160\}"' | head -20 | sed 's/^/      /'
