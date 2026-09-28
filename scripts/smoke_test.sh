@@ -78,20 +78,23 @@ echo "== Esperando la pantalla de bienvenida"
 wait_for_text "Bienvenido a Palladio Health" 40 || fail "No apareció la pantalla de bienvenida (la base de datos cifrada no abrió o la app falló)"
 
 echo "== Aceptando el aviso"
-# El botón está al final de la pantalla: se desplaza hacia abajo primero.
-adb shell input swipe 540 1800 540 500 300
-sleep 1
-if tap_text "Entendido, empezar" "$(ui_dump)"; then
-  wait_for_text "Cuánto dolor sentiste" 20 || fail "No se abrió la pantalla Hoy después del aviso"
-  echo "✓ Pantalla Hoy abierta"
-else
-  echo "(no se encontró el botón del aviso; se omite ese paso)"
-fi
+# El botón está al final: se desplaza hacia abajo hasta encontrarlo.
+tap_scrolling() { # texto, intentos
+  for _ in $(seq 1 "$2"); do
+    if tap_text "$1" "$(ui_dump)"; then return 0; fi
+    adb shell input swipe 540 1800 540 400 300
+    sleep 1
+  done
+  return 1
+}
+tap_scrolling "Entendido, empezar" 6 || fail "No se encontró el botón 'Entendido, empezar'"
+wait_for_text "Cuánto dolor sentiste" 20 || fail "No se abrió la pantalla Hoy después del aviso"
+echo "✓ Pantalla Hoy abierta"
 
 echo "== Búsqueda real en MedlinePlus (el emulador tiene internet)"
 MEDLINE="no probado"
 if tap_text "Guía" "$(ui_dump)" && sleep 2 && tap_text "📚 MedlinePlus" "$(ui_dump)" && sleep 2 \
-  && tap_text "Activar consultas a MedlinePlus" "$(ui_dump)" && sleep 2 && tap_text "Prostatitis" "$(ui_dump)"; then
+  && tap_scrolling "Activar consultas a MedlinePlus" 3 && sleep 2 && tap_scrolling "Prostatitis" 3; then
   if wait_for_text "Ver más" 40; then
     MEDLINE="ok"
     echo "✓ MedlinePlus devolvió temas y la app los mostró como texto"
