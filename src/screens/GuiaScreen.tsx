@@ -4,15 +4,17 @@ import { FOOD_LIMIT, FOOD_PREFER, MENU_ECONOMICO, TIPS_AHORRO } from '../content
 import { DISCLAIMER, HABITS } from '../content/habitos.ts';
 import { EVIDENCE_INFO, REMEDIES, type Evidence } from '../content/remedios.ts';
 import { EMERGENCIAS_PERU, RED_FLAGS } from '../logic/alerts.ts';
+import { MedlinePlusSection } from './MedlinePlusSection.tsx';
 import { Badge, Banner, Body, Button, Card, Subtitle, Title } from '../ui/components.tsx';
 import { colors, space } from '../ui/theme.ts';
 
-type Section = 'alarma' | 'remedios' | 'alimentacion' | 'habitos';
+type Section = 'alarma' | 'remedios' | 'alimentacion' | 'habitos' | 'medline';
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'remedios', label: '🌿 Remedios' },
   { id: 'alimentacion', label: '🥗 Alimentación' },
   { id: 'habitos', label: '🚶 Hábitos' },
+  { id: 'medline', label: '📚 MedlinePlus' },
   { id: 'alarma', label: '🚨 Alarmas' },
 ];
 
@@ -139,6 +141,8 @@ export function GuiaScreen() {
           ))}
         </>
       )}
+
+      {section === 'medline' && <MedlinePlusSection />}
 
       {section === 'alarma' && (
         <>

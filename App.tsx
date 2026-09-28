@@ -125,7 +125,7 @@ function Main({ onLockChange }: { onLockChange: (ms: number) => void }) {
           <Body>{DISCLAIMER}</Body>
         </Card>
         <Card>
-          <Body>🔒 Tus datos se guardan solo en este teléfono, cifrados. La app no usa internet.</Body>
+          <Body>🔒 Tus datos se guardan solo en este teléfono, cifrados. La app solo usa internet si activas las búsquedas en MedlinePlus, y nunca envía tus registros.</Body>
         </Card>
         <Button
           label="Entendido, empezar"

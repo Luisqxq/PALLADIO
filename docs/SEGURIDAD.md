@@ -49,19 +49,17 @@ agregar por su cuenta (`android.blockedPermissions` en `app.json`).
 | `SCHEDULE_EXACT_ALARM` / `RECEIVE_BOOT_COMPLETED` | Que el recordatorio suene a la hora exacta y se restaure tras reiniciar el teléfono. |
 | `USE_BIOMETRIC` | Desbloquear la app con huella. |
 | `USE_FINGERPRINT` / `VIBRATE` | Huella en Android antiguos; vibración del recordatorio. |
+| `INTERNET` | Desde la versión 1.1, **solo** para buscar en MedlinePlus, y solo si el usuario lo activa (viene apagado). Reglas en la sección 6. La versión 1.0 no tenía este permiso. |
 
-**Versión 1: sin `INTERNET`.** La app no puede conectarse a ninguna red. El
-permiso se agregará recién en la versión 2 (consulta a MedlinePlus), con las
-reglas de la sección 6.
-
-**Bloqueados:** internet y estado de red, cámara, micrófono, ubicación, contactos, calendario, SMS,
+**Bloqueados:** estado de red, cámara, micrófono, ubicación, contactos, calendario, SMS,
 llamadas, almacenamiento externo, dibujar sobre otras apps, lista de apps
 instaladas, y cualquier otro no listado arriba.
 
 **Nota sobre Firebase:** la librería de notificaciones de Expo incluye el
 cliente de Firebase Cloud Messaging (para notificaciones push). Palladio no lo
-usa: no hay archivo de configuración de Firebase, así que no se inicializa, y
-sin permiso de internet no podría conectarse. Los recordatorios son alarmas
+usa: no hay archivo de configuración de Firebase, así que no se inicializa
+(verificado en el emulador: "Default FirebaseApp failed to initialize"), y sin
+inicializar no abre ninguna conexión. Los recordatorios son alarmas
 locales del teléfono. Su receptor expuesto está protegido por un permiso que
 solo tiene Google Play Services.
 
@@ -79,15 +77,28 @@ solo tiene Google Play Services.
 - Excepción: si tú decides compartir el reporte PDF con tu médico, se genera
   el archivo en ese momento.
 
-## 6. Red (desde la versión 2)
+## 6. Red (desde la versión 1.1)
 
-- Único destino permitido: servicios oficiales de MedlinePlus
-  (`medlineplus.gov`, `wsearch.nlm.nih.gov`, `connect.medlineplus.gov`).
-  Cualquier otro dominio se rechaza en el código.
+- **Apagado por defecto.** Se activa en Guía → MedlinePlus o en Ajustes, con
+  un aviso que explica qué se envía. Apagado, el código se niega a conectarse.
+- Única conexión: `src/net/medlineplus.ts` → servicio oficial
+  `https://wsearch.nlm.nih.gov/ws/query` (temas de salud en español). Si la
+  respuesta llega desde otro dominio (redirección), se rechaza.
+- Lo único que se envía es el **término de búsqueda** (máx. 80 caracteres,
+  codificado). Nunca registros, datos personales ni identificadores. Sin
+  cookies (`credentials: 'omit'`). Como cualquier sitio web, MedlinePlus ve la
+  dirección IP y el término buscado; la app lo advierte antes de activar.
+- La respuesta se convierte a **texto plano** (`src/logic/medlineplus.ts`):
+  sin WebView, sin HTML ejecutable; se descartan resultados cuyo enlace no sea
+  `https://medlineplus.gov` o un subdominio. Límite de tamaño y de tiempo.
+- Los enlaces "Leer completo" solo abren `medlineplus.gov` en el navegador del
+  teléfono, y solo cuando el usuario lo toca.
+- Los resultados se guardan en la base **cifrada** para leerlos sin internet;
+  se pueden borrar en Ajustes.
 - `usesCleartextTraffic: false`: prohibido HTTP sin cifrar.
-- Lo único que se envía es el **término de búsqueda** (p. ej. "prostatitis").
-  Nunca datos personales, registros ni identificadores del teléfono.
 - Sin publicidad, sin analítica, sin rastreadores, sin reportes de errores a terceros.
+- Pruebas: `tests/medlineplus.test.ts` (dominios permitidos, URL, conversión a
+  texto, descarte de scripts y de enlaces ajenos).
 
 ## 7. Respaldo (exportar / importar) — versión 3
 
@@ -132,7 +143,7 @@ Automático en cada compilación (`.github/workflows/android.yml`):
 
 - `npm audit` (falla con vulnerabilidades altas o críticas), tipos y pruebas.
 - `scripts/verify_apk.py` lee el `AndroidManifest.xml` final **dentro del
-  APK** y falla si hay un permiso fuera de la lista, `INTERNET`,
+  APK** y falla si hay un permiso fuera de la lista,
   `allowBackup` activo, tráfico sin cifrar, APK depurable o un componente
   expuesto a otras apps sin protección.
 - Las acciones de GitHub están fijadas por hash de commit.

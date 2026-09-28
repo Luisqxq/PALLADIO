@@ -16,6 +16,8 @@ ALLOWED_PERMISSIONS = {
     "android.permission.USE_BIOMETRIC",
     "android.permission.USE_FINGERPRINT",
     "android.permission.VIBRATE",
+    # Solo para consultar MedlinePlus (desde la versión 1.1). Ver docs/SEGURIDAD.md.
+    "android.permission.INTERNET",
 }
 # Permiso interno que AndroidX crea para proteger sus propios receptores.
 INTERNAL_PERMISSION = re.compile(r"^[\w.]+\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION$")
@@ -91,8 +93,6 @@ def main():
         print("  -", p)
         if p not in ALLOWED_PERMISSIONS and not INTERNAL_PERMISSION.match(p):
             errors.append(f"Permiso no permitido: {p}")
-    if "android.permission.INTERNET" in perms:
-        errors.append("La app tiene permiso de INTERNET")
 
     apps = [e for e in elements if e.tag == "application"]
     if len(apps) != 1:

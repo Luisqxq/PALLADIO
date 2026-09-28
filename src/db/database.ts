@@ -56,6 +56,14 @@ const MIGRATIONS: string[] = [
     value TEXT NOT NULL
   );
   `,
+  // v2: resultados de MedlinePlus guardados (cifrados) para leerlos sin internet.
+  `
+  CREATE TABLE medline_cache (
+    term TEXT PRIMARY KEY NOT NULL,
+    fetched_at TEXT NOT NULL,
+    results TEXT NOT NULL
+  );
+  `,
 ];
 
 async function applyKey(database: SQLite.SQLiteDatabase, hexKey: string) {

@@ -2,6 +2,7 @@
 
 import { getDb } from './database.ts';
 import type { CpsiAnswers, CpsiScore } from '../logic/cpsi.ts';
+import type { MedlineTopic } from '../logic/medlineplus.ts';
 
 // ---------- utilidades ----------
 
@@ -188,4 +189,40 @@ export async function setSetting(key: string, value: string): Promise<void> {
     'INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     key, value,
   );
+}
+
+// ---------- MedlinePlus (copia local cifrada) ----------
+
+export type CachedSearch = { term: string; fetchedAt: string; results: MedlineTopic[] };
+
+const cacheKey = (term: string) => term.trim().toLowerCase();
+
+export async function getCachedSearch(term: string): Promise<CachedSearch | null> {
+  const row = await getDb().getFirstAsync<{ term: string; fetched_at: string; results: string }>(
+    'SELECT term, fetched_at, results FROM medline_cache WHERE term = ?',
+    cacheKey(term),
+  );
+  if (!row) return null;
+  try {
+    return { term: row.term, fetchedAt: row.fetched_at, results: JSON.parse(row.results) as MedlineTopic[] };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveCachedSearch(term: string, results: MedlineTopic[]): Promise<void> {
+  await getDb().runAsync(
+    `INSERT INTO medline_cache (term, fetched_at, results) VALUES (?, ?, ?)
+     ON CONFLICT(term) DO UPDATE SET fetched_at = excluded.fetched_at, results = excluded.results`,
+    cacheKey(term), now(), JSON.stringify(results),
+  );
+}
+
+export async function listCachedTerms(): Promise<string[]> {
+  const rows = await getDb().getAllAsync<{ term: string }>('SELECT term FROM medline_cache ORDER BY fetched_at DESC LIMIT 20');
+  return rows.map((r) => r.term);
+}
+
+export async function clearMedlineCache(): Promise<void> {
+  await getDb().runAsync('DELETE FROM medline_cache');
 }

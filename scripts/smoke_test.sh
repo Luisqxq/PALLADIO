@@ -88,6 +88,24 @@ else
   echo "(no se encontró el botón del aviso; se omite ese paso)"
 fi
 
+echo "== Búsqueda real en MedlinePlus (el emulador tiene internet)"
+MEDLINE="no probado"
+if tap_text "Guía" "$(ui_dump)" && sleep 2 && tap_text "📚 MedlinePlus" "$(ui_dump)" && sleep 2 \
+  && tap_text "Activar consultas a MedlinePlus" "$(ui_dump)" && sleep 2 && tap_text "Prostatitis" "$(ui_dump)"; then
+  if wait_for_text "Ver más" 40; then
+    MEDLINE="ok"
+    echo "✓ MedlinePlus devolvió temas y la app los mostró como texto"
+    ui_dump | tr '>' '\n' | grep -o 'text="[^"]\{3,80\}"' | head -12
+  else
+    MEDLINE="sin resultados"
+    ui_dump | tr '>' '\n' | grep -o 'text="[^"]\{3,160\}"' | head -20
+  fi
+else
+  echo "(no se pudo navegar hasta MedlinePlus)"
+fi
+echo "Resultado MedlinePlus: $MEDLINE"
+# Depende de un servicio externo: se informa pero no bloquea la publicación.
+
 echo "== Comprobando que la app sigue viva"
 sleep 3
 adb shell pidof "$PKG" >/dev/null || fail "La app se cerró"

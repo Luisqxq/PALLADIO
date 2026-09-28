@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { getSetting, setSetting } from '../db/repo.ts';
+import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { clearMedlineCache, getSetting, setSetting } from '../db/repo.ts';
+import { MEDLINE_SETTING } from '../net/medlineplus.ts';
 import { DISCLAIMER } from '../content/habitos.ts';
 import { Banner, Body, Button, Card, Chip, Subtitle, Title } from '../ui/components.tsx';
 import { colors, space } from '../ui/theme.ts';
@@ -18,10 +19,18 @@ export function AjustesScreen({ onLockChange, onWipe }: Props) {
   const [lockMs, setLockMs] = useState<number>(60_000);
   const [confirming, setConfirming] = useState(false);
   const [confirmText, setConfirmText] = useState('');
+  const [medline, setMedline] = useState(false);
+  const [cacheCleared, setCacheCleared] = useState(false);
 
   useEffect(() => {
     getSetting(LOCK_SETTING).then((v) => v !== null && setLockMs(Number(v)));
+    getSetting(MEDLINE_SETTING).then((v) => setMedline(v === '1'));
   }, []);
+
+  const toggleMedline = async (on: boolean) => {
+    setMedline(on);
+    await setSetting(MEDLINE_SETTING, on ? '1' : '0');
+  };
 
   const chooseLock = async (ms: number) => {
     setLockMs(ms);
@@ -46,10 +55,26 @@ export function AjustesScreen({ onLockChange, onWipe }: Props) {
       <Card>
         <Subtitle>Tu privacidad</Subtitle>
         <Body>• Tus datos se guardan solo en este teléfono, cifrados con AES-256.</Body>
-        <Body>• Esta versión no tiene permiso de internet: no puede enviar nada a ningún lado.</Body>
+        <Body>• La única conexión a internet es la búsqueda en MedlinePlus, y solo si la activas. Solo envía el tema que buscas.</Body>
         <Body>• No hay cuentas, publicidad ni rastreadores.</Body>
         <Body>• Las capturas de pantalla están bloqueadas dentro de la app.</Body>
         <Body>• Los recordatorios no muestran el nombre de tus medicamentos.</Body>
+      </Card>
+
+      <Card>
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1 }}>
+            <Subtitle>Consultas a MedlinePlus</Subtitle>
+            <Body muted>Apagado, la app no se conecta a internet para nada.</Body>
+          </View>
+          <Switch value={medline} onValueChange={toggleMedline} trackColor={{ true: colors.primary }} />
+        </View>
+        <Button
+          kind="secondary"
+          label={cacheCleared ? 'Búsquedas guardadas borradas ✓' : 'Borrar búsquedas guardadas'}
+          disabled={cacheCleared}
+          onPress={async () => { await clearMedlineCache(); setCacheCleared(true); }}
+        />
       </Card>
 
       <Card>
@@ -78,7 +103,7 @@ export function AjustesScreen({ onLockChange, onWipe }: Props) {
 
       <Card>
         <Subtitle>Acerca de</Subtitle>
-        <Body>Palladio Health · versión 1.0.0</Body>
+        <Body>Palladio Health · versión 1.1.0</Body>
         <View style={{ height: space.sm }} />
         <Body muted>{DISCLAIMER}</Body>
         <View style={{ height: space.sm }} />
@@ -90,6 +115,7 @@ export function AjustesScreen({ onLockChange, onWipe }: Props) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.sm },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   input: {
     borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: space.md,
     fontSize: 16, color: colors.text, marginTop: space.sm,

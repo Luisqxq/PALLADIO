@@ -17,14 +17,14 @@ con la moderna y diciendo con honestidad qué evidencia tiene cada cosa.
 | 💊 Pastillas | Tus medicamentos, horarios, recordatorios y cumplimiento de la semana. |
 | 📋 Control | Cuestionario NIH-CPSI semanal (el que usan los urólogos), con tu puntaje y cambio. |
 | 📈 Evolución | Gráfico de 30 días, zonas de dolor, **patrones** (qué se asocia con más o menos dolor al día siguiente) y evolución del NIH-CPSI. |
-| 🌿 Guía | Remedios tradicionales y modernos con nivel de evidencia, alimentación económica en Perú con menú semanal, hábitos y señales de alarma con los números SAMU 106 e Infosalud 113. |
+| 🌿 Guía | Remedios tradicionales y modernos con nivel de evidencia, alimentación económica en Perú con menú semanal, hábitos, señales de alarma con los números SAMU 106 e Infosalud 113, y búsqueda en **MedlinePlus** (opcional, se guarda para leer sin internet). |
 | ⚙️ Ajustes | Tiempo de bloqueo, privacidad y borrado total. |
 
 ### Seguridad
 
 Resumen (detalle en [`docs/SEGURIDAD.md`](docs/SEGURIDAD.md)):
 
-- Sin servidor, sin cuentas y **sin permiso de internet**.
+- Sin servidor ni cuentas. La única conexión a internet es la búsqueda en MedlinePlus, **apagada por defecto**, y solo envía el tema buscado.
 - Base de datos cifrada (SQLCipher, AES-256) con la llave en el Android Keystore.
 - Bloqueo con huella o PIN, capturas de pantalla bloqueadas.
 - Respaldo automático de Android desactivado.
