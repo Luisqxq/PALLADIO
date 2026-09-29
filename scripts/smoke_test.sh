@@ -157,11 +157,15 @@ ok "Solo se muestra lo de su perfil"
 step "Teclado (pendiente #3)"
 FOUND=""
 for _ in $(seq 1 10); do
-  EDIT=$(ui_dump | tr '>' '\n' | grep 'class="android.widget.EditText"' | grep -o 'bounds="[^"]*"' | tail -1 | grep -o '[0-9]\+' | tr '\n' ' ' || true)
-  if [ -n "$EDIT" ]; then
+  UI=$(ui_dump)
+  EDIT=$(echo "$UI" | tr '>' '\n' | grep 'class="android.widget.EditText"' | grep -o 'bounds="[^"]*"' | tail -1 | grep -o '[0-9]\+' | tr '\n' ' ' || true)
+  TABS=$(bounds_of "Pastillas" "$UI")
+  if [ -n "$EDIT" ] && [ -n "$TABS" ]; then
     read -r x1 y1 x2 y2 <<<"$EDIT"
-    # Solo si está bien a la vista (no detrás de la barra de pestañas).
-    if [ "$y1" -lt 1500 ]; then
+    read -r _ tab_label_top _ _ <<<"$TABS"
+    # Solo si el borde superior del campo está a la vista, por encima de la
+    # barra de pestañas (el ícono va ~80 px sobre el texto de la pestaña).
+    if [ $((y1 + 40)) -lt $((tab_label_top - 80)) ]; then
       adb shell input tap $(((x1 + x2) / 2)) $((y1 + 30))
       FOUND=1
       break
