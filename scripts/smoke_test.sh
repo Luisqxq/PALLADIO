@@ -160,9 +160,12 @@ for _ in $(seq 1 10); do
   EDIT=$(ui_dump | tr '>' '\n' | grep 'class="android.widget.EditText"' | grep -o 'bounds="[^"]*"' | tail -1 | grep -o '[0-9]\+' | tr '\n' ' ' || true)
   if [ -n "$EDIT" ]; then
     read -r x1 y1 x2 y2 <<<"$EDIT"
-    adb shell input tap $(((x1 + x2) / 2)) $(((y1 + y2) / 2))
-    FOUND=1
-    break
+    # Solo si está bien a la vista (no detrás de la barra de pestañas).
+    if [ "$y1" -lt 1500 ]; then
+      adb shell input tap $(((x1 + x2) / 2)) $((y1 + 30))
+      FOUND=1
+      break
+    fi
   fi
   adb shell input swipe 540 1700 540 600 300
   sleep 1
