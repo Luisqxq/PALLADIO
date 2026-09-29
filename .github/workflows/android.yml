@@ -1,0 +1,206 @@
+# Compila el APK de Palladio Health, lo verifica y (si se pide) lo publica.
+#
+# - En cada push: pruebas, tipos, auditoría de dependencias, compilación y
+#   verificación de seguridad del APK.
+# - Manualmente (Actions > Android > Run workflow) con "publicar" activado:
+#   firma con tu llave y crea un Release con el APK y su SHA-256.
+
+name: Android
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: 'Publicar un Release con el APK firmado'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      signed: ${{ env.HAS_KEYSTORE }}
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Instalar dependencias (versiones exactas del lockfile)
+        run: npm ci
+
+      - name: Auditoría de dependencias (falla con vulnerabilidades altas)
+        run: npm audit --audit-level=high
+
+      - name: Tipos
+        run: npm run typecheck
+
+      - name: Pruebas
+        run: npm test
+
+      - name: Generar proyecto Android
+        run: |
+          npx expo prebuild --platform android --no-install --clean
+          # Cada compilación sube el número de versión para poder actualizar la app.
+          sed -i -E "s/versionCode [0-9]+/versionCode ${GITHUB_RUN_NUMBER}/" android/app/build.gradle
+          grep -n "versionCode" android/app/build.gradle
+          # La protección de pantalla (FLAG_SECURE) debe estar en MainActivity.
+          grep -q "FLAG_SECURE" android/app/src/main/java/pe/palladio/health/MainActivity.kt
+
+      - name: Compilar APK de producción
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64
+
+      - name: Ubicar herramientas de Android
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "BUILD_TOOLS=$BT" >> "$GITHUB_ENV"
+          cp android/app/build/outputs/apk/release/app-release.apk palladio.apk
+
+      - name: Verificación de seguridad del APK
+        run: python3 scripts/verify_apk.py "$BUILD_TOOLS/aapt2" palladio.apk
+
+      - name: Firmar con tu llave
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          umask 077
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/palladio.jks"
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$RUNNER_TEMP/palladio.jks" \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --ks-key-alias "$KEY_ALIAS" \
+            --out palladio-firmado.apk palladio.apk
+          rm -f "$RUNNER_TEMP/palladio.jks"
+          "$BUILD_TOOLS/apksigner" verify --print-certs palladio-firmado.apk | grep -v '^WARNING'
+          mv palladio-firmado.apk palladio.apk
+
+      - name: Nombre y huella SHA-256
+        id: apk
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          if [ "$HAS_KEYSTORE" = "true" ]; then NAME="palladio-health-$VERSION.apk"; else NAME="palladio-health-$VERSION-SOLO-PRUEBA.apk"; fi
+          mv palladio.apk "$NAME"
+          sha256sum "$NAME" | tee "$NAME.sha256"
+          echo "APK_NAME=$NAME" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # Nombre fijo: GitHub oculta en las salidas entre jobs cualquier
+          # texto que coincida con un secreto (p. ej. el alias de la llave).
+          name: apk
+          path: |
+            ${{ env.APK_NAME }}
+            ${{ env.APK_NAME }}.sha256
+          retention-days: 14
+
+
+  smoke-test:
+    # Instala el APK en un emulador Android 14 y comprueba que abre, que la
+    # base de datos cifrada funciona y que las capturas salen en negro.
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: apk
+
+      - name: Descargar la versión publicada anterior (para probar la actualización)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p prev
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir prev \
+            || echo "No hay una versión publicada anterior."
+          ls -la prev
+
+      - name: Habilitar aceleración del emulador (KVM)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Emulador Android 14 y prueba de humo
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -camera-back none -camera-front none
+          script: bash scripts/smoke_test.sh "$(ls *.apk | head -1)" "$(ls prev/*.apk 2>/dev/null | head -1)"
+
+      - name: Guardar evidencia si falla
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-test-evidencia
+          path: smoke/
+          retention-days: 7
+
+  release:
+    needs: [build, smoke-test]
+    if: github.event_name == 'workflow_dispatch' && inputs.publicar
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # solo para crear el Release
+    steps:
+      - name: Comprobar que el APK está firmado con tu llave
+        if: needs.build.outputs.signed != 'true'
+        run: |
+          echo "::error::Falta configurar tu llave de firma (secretos ANDROID_KEYSTORE_*). No se publica un APK de prueba."
+          exit 1
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: apk
+
+      - name: Verificar huella y publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK_NAME=$(ls *.apk | head -1)
+          APP_VERSION=$(echo "$APK_NAME" | sed -E 's/.*-([0-9]+\.[0-9]+\.[0-9]+)\.apk$/\1/')
+          sha256sum -c "$APK_NAME.sha256"
+          TAG="v$APP_VERSION-${GITHUB_RUN_NUMBER}"
+          SHA=$(cut -d' ' -f1 "$APK_NAME.sha256")
+          gh release create "$TAG" "$APK_NAME" "$APK_NAME.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Palladio Health $APP_VERSION (compilación $GITHUB_RUN_NUMBER)" \
+            --notes "APK firmado de Palladio Health.
+
+          **SHA-256:** \`$SHA\`
+
+          Antes de instalar, comprueba que la huella del archivo descargado coincide con esta."
