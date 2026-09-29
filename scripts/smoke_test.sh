@@ -27,6 +27,8 @@ ui_dump() {
 fail() {
   echo "✗ $1"
   ui_dump > "$OUT/ui.xml"
+  echo "  Textos en pantalla:"
+  tr '>' '\n' < "$OUT/ui.xml" | grep -o 'text="[^"]\{1,80\}"' | head -40 | sed 's/^/    /' || true
   adb logcat -d > "$OUT/logcat.txt" || true
   exit 1
 }
@@ -111,7 +113,10 @@ if [ -n "$PREV_APK" ] && [ -f "$PREV_APK" ]; then
   tap_scrolling "Entendido, empezar" 6 || fail "Versión anterior: no se encontró 'Entendido, empezar'"
   wait_for_text "Cuánto dolor" 20 || fail "Versión anterior: no se abrió Hoy"
   tap "5" || fail "Versión anterior: no se pudo marcar el dolor"
+  ok "Dolor 5 marcado"
+  sleep 1
   tap_scrolling "Guardar registro" 8 || fail "Versión anterior: no se encontró 'Guardar registro'"
+  ok "Pulsado 'Guardar registro'"
   wait_for_text "Guardado" 10 || fail "Versión anterior: no se guardó el registro"
   ok "Registro guardado en la versión anterior"
 
