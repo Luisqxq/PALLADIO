@@ -67,3 +67,17 @@ export async function cancelReminders(ids: string[]): Promise<void> {
 export async function cancelAllReminders(): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
+
+// Vuelve a programar los recordatorios de todos los medicamentos activos
+// (por ejemplo, después de restaurar un respaldo).
+export async function rescheduleAll(
+  meds: { id: number; times: string[]; reminders: boolean }[],
+  saveIds: (id: number, ids: string[]) => Promise<void>,
+): Promise<boolean> {
+  await cancelAllReminders();
+  const withReminders = meds.filter((m) => m.reminders && m.times.length > 0);
+  if (withReminders.length === 0) return true;
+  if (!(await ensurePermission())) return false;
+  for (const m of withReminders) await saveIds(m.id, await scheduleDailyReminders(m.times));
+  return true;
+}

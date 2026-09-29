@@ -87,13 +87,13 @@ export function ScaleSelector({ value, onChange }: { value: number | null; onCha
   );
 }
 
-export function Stepper({ value, onChange, min = 0, max = 10 }: { value: number; onChange: (v: number) => void; min?: number; max?: number }) {
+export function Stepper({ value, onChange, min = 0, max = 10, unit }: { value: number; onChange: (v: number) => void; min?: number; max?: number; unit?: string }) {
   return (
     <View style={styles.stepper}>
       <Pressable accessibilityLabel="Menos" onPress={() => onChange(Math.max(min, value - 1))} style={styles.stepBtn}>
         <Text style={styles.stepBtnText}>−</Text>
       </Pressable>
-      <Text style={styles.stepValue}>{value}</Text>
+      <Text style={styles.stepValue}>{value}{unit ? ` ${unit}` : ''}</Text>
       <Pressable accessibilityLabel="Más" onPress={() => onChange(Math.min(max, value + 1))} style={styles.stepBtn}>
         <Text style={styles.stepBtnText}>+</Text>
       </Pressable>
@@ -150,3 +150,16 @@ const styles = StyleSheet.create({
   badge: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: space.sm },
   badgeText: { fontSize: 12, fontWeight: '700' },
 });
+
+// Selección de una sola opción, con chips.
+export function SingleGroup({
+  items, value, onChange,
+}: { items: { id: string; label: string }[]; value: string | undefined; onChange: (id: string | undefined) => void }) {
+  return (
+    <View style={styles.chipGroup}>
+      {items.map((i) => (
+        <Chip key={i.id} label={i.label} selected={value === i.id} onPress={() => onChange(value === i.id ? undefined : i.id)} />
+      ))}
+    </View>
+  );
+}

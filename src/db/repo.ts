@@ -1,7 +1,9 @@
 // Lectura y escritura de datos. Siempre con consultas parametrizadas.
 
 import { getDb } from './database.ts';
-import type { CpsiAnswers, CpsiScore } from '../logic/cpsi.ts';
+import type { QAnswers, QScore } from '../logic/questionnaires.ts';
+import { cleanEntry, isConditionId } from '../modules/index.ts';
+import type { ConditionId, EntryData } from '../modules/types.ts';
 import type { MedlineTopic } from '../logic/medlineplus.ts';
 
 // ---------- utilidades ----------
@@ -17,68 +19,67 @@ function parseList(json: string): string[] {
 
 const now = () => new Date().toISOString();
 
-// ---------- registro diario ----------
+// ---------- registro diario por módulo ----------
+// Cada día tiene una fila por módulo (prostatitis, colon, …) y una "general"
+// con detonantes, alivios, señales de alarma y notas.
 
-export type DailyLog = {
-  date: string;
-  pain: number;
-  locations: string[];
-  urinary: string[];
-  nocturia: number;
-  triggers: string[];
-  reliefs: string[];
-  flags: string[];
-  notes: string;
-};
+export type DayEntries = Record<string, EntryData>; // módulo -> datos
 
-type DailyRow = Omit<DailyLog, 'locations' | 'urinary' | 'triggers' | 'reliefs' | 'flags'> & {
-  locations: string; urinary: string; triggers: string; reliefs: string; flags: string;
-};
+type EntryRow = { date: string; module: string; data: string };
 
-const fromDailyRow = (r: DailyRow): DailyLog => ({
-  date: r.date,
-  pain: r.pain,
-  locations: parseList(r.locations),
-  urinary: parseList(r.urinary),
-  nocturia: r.nocturia,
-  triggers: parseList(r.triggers),
-  reliefs: parseList(r.reliefs),
-  flags: parseList(r.flags),
-  notes: r.notes,
-});
-
-export async function getDailyLog(date: string): Promise<DailyLog | null> {
-  const row = await getDb().getFirstAsync<DailyRow>('SELECT * FROM daily_log WHERE date = ?', date);
-  return row ? fromDailyRow(row) : null;
+function parseEntry(json: string): EntryData {
+  try {
+    return cleanEntry(JSON.parse(json));
+  } catch {
+    return {};
+  }
 }
 
-export async function saveDailyLog(log: DailyLog): Promise<void> {
-  await getDb().runAsync(
-    `INSERT INTO daily_log (date, pain, locations, urinary, nocturia, triggers, reliefs, flags, notes, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(date) DO UPDATE SET
-       pain = excluded.pain, locations = excluded.locations, urinary = excluded.urinary,
-       nocturia = excluded.nocturia, triggers = excluded.triggers, reliefs = excluded.reliefs,
-       flags = excluded.flags, notes = excluded.notes, updated_at = excluded.updated_at`,
-    log.date,
-    Math.max(0, Math.min(10, Math.round(log.pain))),
-    JSON.stringify(log.locations),
-    JSON.stringify(log.urinary),
-    Math.max(0, Math.min(20, Math.round(log.nocturia))),
-    JSON.stringify(log.triggers),
-    JSON.stringify(log.reliefs),
-    JSON.stringify(log.flags),
-    log.notes.slice(0, 2000),
-    now(),
-  );
+export async function getDayEntries(date: string): Promise<DayEntries> {
+  const rows = await getDb().getAllAsync<EntryRow>('SELECT date, module, data FROM day_entry WHERE date = ?', date);
+  return Object.fromEntries(rows.map((r) => [r.module, parseEntry(r.data)]));
 }
 
-export async function listDailyLogs(fromDate: string): Promise<DailyLog[]> {
-  const rows = await getDb().getAllAsync<DailyRow>(
-    'SELECT * FROM daily_log WHERE date >= ? ORDER BY date DESC',
+export async function saveDayEntries(date: string, entries: DayEntries): Promise<void> {
+  const db = getDb();
+  await db.withTransactionAsync(async () => {
+    for (const [module, data] of Object.entries(entries)) {
+      await db.runAsync(
+        `INSERT INTO day_entry (date, module, data, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(date, module) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+        date, module.slice(0, 40), JSON.stringify(cleanEntry(data)), now(),
+      );
+    }
+  });
+}
+
+// Registros desde una fecha: fecha -> módulo -> datos, de la más reciente a la más antigua.
+export async function listDayEntries(fromDate: string): Promise<{ date: string; entries: DayEntries }[]> {
+  const rows = await getDb().getAllAsync<EntryRow>(
+    'SELECT date, module, data FROM day_entry WHERE date >= ? ORDER BY date DESC',
     fromDate,
   );
-  return rows.map(fromDailyRow);
+  const byDate = new Map<string, DayEntries>();
+  for (const r of rows) {
+    const e = byDate.get(r.date) ?? {};
+    e[r.module] = parseEntry(r.data);
+    byDate.set(r.date, e);
+  }
+  return [...byDate.entries()].map(([date, entries]) => ({ date, entries }));
+}
+
+// ---------- perfil ----------
+
+export async function getProfile(): Promise<{ conditions: ConditionId[]; confirmed: boolean }> {
+  const raw = await getSetting('profile');
+  const confirmed = (await getSetting('profile_confirmed')) === '1';
+  const conditions = raw ? parseList(raw).filter(isConditionId) : [];
+  return { conditions, confirmed };
+}
+
+export async function saveProfile(conditions: ConditionId[]): Promise<void> {
+  await setSetting('profile', JSON.stringify(conditions.filter(isConditionId)));
+  await setSetting('profile_confirmed', '1');
 }
 
 // ---------- medicamentos ----------
@@ -160,21 +161,59 @@ export async function setIntake(i: Intake | (Omit<Intake, 'status'> & { status: 
   );
 }
 
-// ---------- cuestionario NIH-CPSI ----------
+// ---------- cuestionarios ----------
 
-export type CpsiEntry = { id: number; date: string; dolor: number; urinario: number; calidad: number; total: number };
+export type QuestionnaireEntry = {
+  id: number;
+  code: string;
+  date: string;
+  total: number;
+  parts: { label: string; value: number; max: number }[];
+};
 
-export async function saveCpsi(date: string, answers: CpsiAnswers, score: CpsiScore): Promise<void> {
+type QRow = { id: number; code: string; date: string; total: number; parts: string };
+
+export async function saveQuestionnaire(code: string, date: string, answers: QAnswers, score: QScore): Promise<void> {
   await getDb().runAsync(
-    'INSERT INTO cpsi (date, answers, dolor, urinario, calidad, total) VALUES (?, ?, ?, ?, ?, ?)',
-    date, JSON.stringify(answers), score.dolor, score.urinario, score.calidad, score.total,
+    'INSERT INTO questionnaire (code, date, answers, parts, total) VALUES (?, ?, ?, ?, ?)',
+    code, date, JSON.stringify(answers), JSON.stringify(score.parts), score.total,
   );
 }
 
-export async function listCpsi(): Promise<CpsiEntry[]> {
-  return getDb().getAllAsync<CpsiEntry>(
-    'SELECT id, date, dolor, urinario, calidad, total FROM cpsi ORDER BY date DESC, id DESC',
+export async function listQuestionnaires(code?: string): Promise<QuestionnaireEntry[]> {
+  const rows = code
+    ? await getDb().getAllAsync<QRow>(
+      'SELECT id, code, date, total, parts FROM questionnaire WHERE code = ? ORDER BY date DESC, id DESC', code)
+    : await getDb().getAllAsync<QRow>('SELECT id, code, date, total, parts FROM questionnaire ORDER BY date DESC, id DESC');
+  return rows.map((r) => {
+    let parts: QuestionnaireEntry['parts'] = [];
+    try {
+      const p = JSON.parse(r.parts);
+      if (Array.isArray(p)) parts = p;
+    } catch { /* se ignora */ }
+    return { id: r.id, code: r.code, date: r.date, total: r.total, parts };
+  });
+}
+
+// ---------- antecedentes familiares ----------
+
+export type FamilyHistoryItem = { id: number; relative: string; condition: string; note: string };
+
+export async function listFamilyHistory(): Promise<FamilyHistoryItem[]> {
+  return getDb().getAllAsync<FamilyHistoryItem>(
+    'SELECT id, relative, condition, note FROM family_history ORDER BY id',
   );
+}
+
+export async function addFamilyHistory(relative: string, condition: string, note: string): Promise<void> {
+  await getDb().runAsync(
+    'INSERT INTO family_history (relative, condition, note, created_at) VALUES (?, ?, ?, ?)',
+    relative.slice(0, 40), condition.slice(0, 60), note.trim().slice(0, 200), now(),
+  );
+}
+
+export async function removeFamilyHistory(id: number): Promise<void> {
+  await getDb().runAsync('DELETE FROM family_history WHERE id = ?', id);
 }
 
 // ---------- ajustes ----------

@@ -49,8 +49,8 @@ después de guardarlos, aunque el repositorio sea público.
 
 ## Paso 5: primer uso
 
-1. Abre Palladio Health y desbloquéala con tu huella o PIN.
-2. Lee el aviso inicial y pulsa "Entendido, empezar".
+1. Abre Palladio Health, lee el aviso inicial y pulsa "Entendido, empezar".
+2. Marca tus condiciones (puedes cambiarlas luego en Ajustes → Mi perfil).
 3. Ve a **💊 Pastillas** y agrega tus medicamentos con sus horarios. La primera
    vez te pedirá permiso para notificaciones: acéptalo para tener recordatorios.
 4. Registra tu día en **📝 Hoy** y haz tu primer control en **📋 Control**.
@@ -61,7 +61,10 @@ permitir.
 
 ## Actualizaciones
 
-Cuando haya una versión nueva, repite los pasos 3 y 4. Android solo acepta la
+Cuando haya una versión nueva, repite los pasos 3 y 4 **sin desinstalar** la
+app: se instala encima y tus datos se conservan (cada versión se prueba así
+automáticamente antes de publicarse). Por si acaso, antes de actualizar puedes
+crear un **respaldo cifrado** en Ajustes. Android solo acepta la
 actualización si está firmada con **tu** llave, así que nadie puede
 reemplazar tu app por otra.
 

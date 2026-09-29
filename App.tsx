@@ -1,19 +1,23 @@
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { setScreenCaptureBlocked } from './modules/secure-window/index.ts';
 import { DISCLAIMER } from './src/content/habitos.ts';
 import { DatabaseLockedError, openDatabase, wipeEverything } from './src/db/database.ts';
-import { getSetting, setSetting } from './src/db/repo.ts';
+import { getProfile, getSetting, saveProfile, setSetting } from './src/db/repo.ts';
+import type { ConditionId } from './src/modules/types.ts';
 import { cancelAllReminders } from './src/notifications.ts';
-import { AjustesScreen, LOCK_SETTING } from './src/screens/AjustesScreen.tsx';
+import { AjustesScreen, LOCK_SETTING, SCREENSHOTS_SETTING } from './src/screens/AjustesScreen.tsx';
 import { CuestionarioScreen } from './src/screens/CuestionarioScreen.tsx';
 import { GuiaScreen } from './src/screens/GuiaScreen.tsx';
 import { HistorialScreen } from './src/screens/HistorialScreen.tsx';
 import { HoyScreen } from './src/screens/HoyScreen.tsx';
 import { MedicamentosScreen } from './src/screens/MedicamentosScreen.tsx';
-import { DEFAULT_LOCK_AFTER_MS, LockGate } from './src/security/LockGate.tsx';
+import { PerfilPicker } from './src/screens/PerfilPicker.tsx';
+import { LockGate, parseLockMode, type LockMode } from './src/security/LockGate.tsx';
 import { Body, Button, Card, Title } from './src/ui/components.tsx';
+import { KeyboardScrollView } from './src/ui/keyboard.tsx';
 import { colors, space } from './src/ui/theme.ts';
 
 type Tab = 'hoy' | 'meds' | 'control' | 'historial' | 'guia' | 'ajustes';
@@ -29,47 +33,58 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
 
 const DISCLAIMER_SETTING = 'disclaimer_accepted';
 
-type DbState =
+type AppState =
   | { status: 'loading' }
-  | { status: 'ready'; disclaimerAccepted: boolean }
-  | { status: 'error'; message: string; lostKey: boolean };
+  | { status: 'error'; message: string; lostKey: boolean }
+  | {
+    status: 'ready';
+    disclaimerAccepted: boolean;
+    profile: ConditionId[];
+    profileConfirmed: boolean;
+    lock: LockMode;
+  };
 
-// Las capturas de pantalla se bloquean en Android con FLAG_SECURE desde
-// plugins/withSecureWindow.js, antes de que cargue esta interfaz.
+// Las capturas se bloquean desde que se crea la ventana (FLAG_SECURE en
+// plugins/withSecureWindow.js) y luego se aplica lo que elija el usuario:
+// por defecto, permitidas (pendiente #2).
 export default function App() {
-  const [lockAfterMs, setLockAfterMs] = useState(DEFAULT_LOCK_AFTER_MS);
-
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <LockGate lockAfterMs={lockAfterMs}>
-          <Main onLockChange={setLockAfterMs} />
-        </LockGate>
+        <Main />
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
-function Main({ onLockChange }: { onLockChange: (ms: number) => void }) {
-  const [db, setDb] = useState<DbState>({ status: 'loading' });
+function Main() {
+  const [state, setState] = useState<AppState>({ status: 'loading' });
   const [tab, setTab] = useState<Tab>('hoy');
+  // Cambia para volver a montar las pantallas (p. ej. tras restaurar un respaldo).
+  const [generation, setGeneration] = useState(0);
 
   const init = useCallback(async () => {
-    setDb({ status: 'loading' });
+    setState({ status: 'loading' });
     try {
       await openDatabase();
-      const lock = await getSetting(LOCK_SETTING);
-      if (lock !== null) onLockChange(Number(lock));
-      setDb({ status: 'ready', disclaimerAccepted: (await getSetting(DISCLAIMER_SETTING)) === '1' });
+      await setScreenCaptureBlocked((await getSetting(SCREENSHOTS_SETTING)) === '1').catch(() => {});
+      const profile = await getProfile();
+      setState({
+        status: 'ready',
+        disclaimerAccepted: (await getSetting(DISCLAIMER_SETTING)) === '1',
+        profile: profile.conditions,
+        profileConfirmed: profile.confirmed,
+        lock: parseLockMode(await getSetting(LOCK_SETTING)),
+      });
     } catch (e) {
-      setDb({
+      setState({
         status: 'error',
         lostKey: e instanceof DatabaseLockedError,
         message: e instanceof Error ? e.message : 'Error desconocido',
       });
     }
-  }, [onLockChange]);
+  }, []);
 
   useEffect(() => {
     init();
@@ -78,12 +93,11 @@ function Main({ onLockChange }: { onLockChange: (ms: number) => void }) {
   const wipe = useCallback(async () => {
     await cancelAllReminders().catch(() => {});
     await wipeEverything();
-    onLockChange(DEFAULT_LOCK_AFTER_MS);
     setTab('hoy');
     await init();
-  }, [init, onLockChange]);
+  }, [init]);
 
-  if (db.status === 'loading') {
+  if (state.status === 'loading') {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -91,39 +105,38 @@ function Main({ onLockChange }: { onLockChange: (ms: number) => void }) {
     );
   }
 
-  if (db.status === 'error') {
+  if (state.status === 'error') {
     return (
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardScrollView contentContainerStyle={styles.content}>
         <Title>No se pudieron abrir tus datos</Title>
         <Card>
-          <Body>{db.message}</Body>
-          {db.lostKey && (
+          <Body>{state.message}</Body>
+          {state.lostKey && (
             <>
               <View style={{ height: space.sm }} />
               <Body>
                 Tus datos siguen cifrados en el teléfono, pero sin su llave nadie puede leerlos, ni siquiera la app.
-                Puedes empezar de cero; se borrarán los datos anteriores.
+                Puedes empezar de cero; se borrarán los datos anteriores. Si tienes un respaldo, podrás restaurarlo
+                después en Ajustes.
               </Body>
             </>
           )}
         </Card>
         <Button label="Reintentar" onPress={init} />
-        {db.lostKey && <Button kind="danger" label="Borrar y empezar de cero" onPress={wipe} />}
-      </ScrollView>
+        {state.lostKey && <Button kind="danger" label="Borrar y empezar de cero" onPress={wipe} />}
+      </KeyboardScrollView>
     );
   }
 
-  if (!db.disclaimerAccepted) {
+  if (!state.disclaimerAccepted) {
     return (
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardScrollView contentContainerStyle={styles.content}>
         <Text style={styles.logo}>🌿</Text>
         <Title>Bienvenido a Palladio Health</Title>
         <Card>
-          <Body>Tu diario de salud y guía para vivir mejor con la prostatitis y cuidar tu colon, mezclando lo tradicional con lo moderno.</Body>
+          <Body>Tu diario de salud y guía para vivir mejor con tus condiciones, mezclando lo tradicional con lo moderno.</Body>
         </Card>
-        <Card>
-          <Body>{DISCLAIMER}</Body>
-        </Card>
+        <Card><Body>{DISCLAIMER}</Body></Card>
         <Card>
           <Body>🔒 Tus datos se guardan solo en este teléfono, cifrados. La app solo usa internet si activas las búsquedas en MedlinePlus, y nunca envía tus registros.</Body>
         </Card>
@@ -131,38 +144,75 @@ function Main({ onLockChange }: { onLockChange: (ms: number) => void }) {
           label="Entendido, empezar"
           onPress={async () => {
             await setSetting(DISCLAIMER_SETTING, '1');
-            setDb({ status: 'ready', disclaimerAccepted: true });
+            setState({ ...state, disclaimerAccepted: true });
           }}
         />
-      </ScrollView>
+      </KeyboardScrollView>
     );
   }
 
+  if (!state.profileConfirmed) {
+    return (
+      <KeyboardScrollView contentContainerStyle={styles.content}>
+        <Title>¿Qué quieres cuidar?</Title>
+        <Body muted>Marca tus condiciones. La app se adapta a ti: cada persona ve solo lo suyo.</Body>
+        <View style={{ height: space.md }} />
+        <PerfilPicker
+          initial={state.profile}
+          saveLabel="Continuar"
+          onSave={async (conditions) => {
+            await saveProfile(conditions);
+            setState({ ...state, profile: conditions, profileConfirmed: true });
+          }}
+        />
+      </KeyboardScrollView>
+    );
+  }
+
+  const { profile } = state;
+
   return (
-    <View style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {tab === 'hoy' && <HoyScreen />}
-        {tab === 'meds' && <MedicamentosScreen />}
-        {tab === 'control' && <CuestionarioScreen />}
-        {tab === 'historial' && <HistorialScreen />}
-        {tab === 'guia' && <GuiaScreen />}
-        {tab === 'ajustes' && <AjustesScreen onLockChange={onLockChange} onWipe={wipe} />}
-      </ScrollView>
-      <View style={styles.tabBar}>
-        {TABS.map((t) => (
-          <Pressable
-            key={t.id}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: tab === t.id }}
-            onPress={() => setTab(t.id)}
-            style={styles.tabItem}
-          >
-            <Text style={styles.tabIcon}>{t.icon}</Text>
-            <Text style={[styles.tabLabel, tab === t.id && styles.tabLabelOn]}>{t.label}</Text>
-          </Pressable>
-        ))}
+    <LockGate mode={state.lock}>
+      <View style={{ flex: 1 }} key={generation}>
+        <KeyboardScrollView key={tab} contentContainerStyle={styles.content}>
+          {tab === 'hoy' && <HoyScreen profile={profile} />}
+          {tab === 'meds' && <MedicamentosScreen />}
+          {tab === 'control' && <CuestionarioScreen profile={profile} />}
+          {tab === 'historial' && <HistorialScreen profile={profile} />}
+          {tab === 'guia' && <GuiaScreen profile={profile} />}
+          {tab === 'ajustes' && (
+            <AjustesScreen
+              profile={profile}
+              onProfileChange={async (conditions) => {
+                await saveProfile(conditions);
+                setState({ ...state, profile: conditions });
+              }}
+              onLockChange={(lock) => setState({ ...state, lock })}
+              onScreenshotsChange={(blocked) => { setScreenCaptureBlocked(blocked).catch(() => {}); }}
+              onWipe={wipe}
+              onImported={() => {
+                setGeneration((g) => g + 1);
+                init();
+              }}
+            />
+          )}
+        </KeyboardScrollView>
+        <View style={styles.tabBar}>
+          {TABS.map((t) => (
+            <Pressable
+              key={t.id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === t.id }}
+              onPress={() => setTab(t.id)}
+              style={styles.tabItem}
+            >
+              <Text style={styles.tabIcon}>{t.icon}</Text>
+              <Text style={[styles.tabLabel, tab === t.id && styles.tabLabelOn]}>{t.label}</Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
-    </View>
+    </LockGate>
   );
 }
 

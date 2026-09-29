@@ -1,7 +1,8 @@
 /// <reference types="node" />
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { evaluateFlags, sustainedHighPain } from '../src/logic/alerts.ts';
+import { sustainedHighPain } from '../src/logic/alerts.ts';
+import { evaluateFlags, redFlagsFor } from '../src/modules/index.ts';
 import { CPSI_QUESTIONS, describeChange, isComplete, scoreCpsi } from '../src/logic/cpsi.ts';
 import { addDays, isValidTime, normalizeTime } from '../src/logic/dates.ts';
 import { findPatterns, type DayRecord } from '../src/logic/patterns.ts';
@@ -53,7 +54,7 @@ test('fechas', () => {
 });
 
 test('alertas', () => {
-  const r = evaluateFlags(['fiebre', 'sangre_orina']);
+  const r = evaluateFlags(['fiebre', 'sangre_orina'], redFlagsFor(['prostatitis']));
   assert.deepEqual(r.urgent.map((f) => f.id), ['fiebre']);
   assert.deepEqual(r.soon.map((f) => f.id), ['sangre_orina']);
   assert.ok(sustainedHighPain([7, 8, 9]));

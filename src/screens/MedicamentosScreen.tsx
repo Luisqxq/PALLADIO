@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
 import {
   addMedication, archiveMedication, listIntakes, listMedications, setNotificationIds,
   type Intake, type Medication,
@@ -8,6 +8,7 @@ import { addDays, isValidTime, normalizeTime, today } from '../logic/dates.ts';
 import { cancelReminders, ensurePermission, scheduleDailyReminders } from '../notifications.ts';
 import { withSystemDialog } from '../security/LockGate.tsx';
 import { Banner, Body, Button, Card, Subtitle, Title } from '../ui/components.tsx';
+import { Input } from '../ui/keyboard.tsx';
 import { colors, space } from '../ui/theme.ts';
 
 export function MedicamentosScreen() {
@@ -135,11 +136,11 @@ export function MedicamentosScreen() {
       {adding ? (
         <Card>
           <Subtitle>Nuevo medicamento</Subtitle>
-          <TextInput style={styles.input} placeholder="Nombre (ej. Tamsulosina)" placeholderTextColor={colors.muted} value={name} onChangeText={setName} maxLength={100} />
-          <TextInput style={styles.input} placeholder="Dosis (ej. 0.4 mg, 1 cápsula)" placeholderTextColor={colors.muted} value={dose} onChangeText={setDose} maxLength={100} />
+          <Input style={styles.input} placeholder="Nombre (ej. Tamsulosina)" placeholderTextColor={colors.muted} value={name} onChangeText={setName} maxLength={100} />
+          <Input style={styles.input} placeholder="Dosis (ej. 0.4 mg, 1 cápsula)" placeholderTextColor={colors.muted} value={dose} onChangeText={setDose} maxLength={100} />
           <Body>Horarios</Body>
           <View style={styles.row}>
-            <TextInput
+            <Input
               style={[styles.input, { flex: 1, marginBottom: 0 }]}
               placeholder="HH:MM (ej. 08:00)"
               placeholderTextColor={colors.muted}

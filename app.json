@@ -2,7 +2,7 @@
   "expo": {
     "name": "Palladio Health",
     "slug": "palladio-health",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -111,7 +111,18 @@
           "color": "#2F6B55"
         }
       ],
-      "./plugins/withSecureWindow.js"
+      "./plugins/withSecureWindow.js",
+      [
+        "expo-sharing",
+        {
+          "android": {
+            "enabled": false
+          },
+          "ios": {
+            "enabled": false
+          }
+        }
+      ]
     ]
   }
 }

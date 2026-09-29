@@ -2,6 +2,7 @@
 // Todas las consultas usan parámetros: nunca se arma SQL con texto del usuario.
 
 import * as SQLite from 'expo-sqlite';
+import { convertLegacyCpsi, convertLegacyDaily, type LegacyCpsiRow, type LegacyDailyRow } from '../logic/legacy.ts';
 import { createDbKey, deleteDbKey, getExistingDbKey } from '../security/keys.ts';
 
 const DB_NAME = 'palladio.db';
@@ -9,7 +10,9 @@ let db: SQLite.SQLiteDatabase | null = null;
 
 export class DatabaseLockedError extends Error {}
 
-const MIGRATIONS: string[] = [
+type Migration = string | ((db: SQLite.SQLiteDatabase) => Promise<void>);
+
+const MIGRATIONS: Migration[] = [
   // v1
   `
   CREATE TABLE daily_log (
@@ -64,6 +67,62 @@ const MIGRATIONS: string[] = [
     results TEXT NOT NULL
   );
   `,
+  // v3: datos por módulo (varias condiciones), cuestionarios genéricos,
+  // antecedentes familiares. Se copian los datos de la v1; las tablas viejas
+  // se conservan intactas.
+  async (database) => {
+    await database.execAsync(`
+      CREATE TABLE day_entry (
+        date TEXT NOT NULL,
+        module TEXT NOT NULL,
+        data TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (date, module)
+      );
+      CREATE TABLE questionnaire (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL,
+        date TEXT NOT NULL,
+        answers TEXT NOT NULL,
+        parts TEXT NOT NULL,
+        total INTEGER NOT NULL
+      );
+      CREATE TABLE family_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        relative TEXT NOT NULL,
+        condition TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+      );
+    `);
+    const daily = await database.getAllAsync<LegacyDailyRow>('SELECT * FROM daily_log');
+    for (const r of daily) {
+      const c = convertLegacyDaily(r);
+      await database.runAsync(
+        'INSERT INTO day_entry (date, module, data, updated_at) VALUES (?, ?, ?, ?)',
+        r.date, 'prostatitis', JSON.stringify(c.prostatitis), r.updated_at,
+      );
+      await database.runAsync(
+        'INSERT INTO day_entry (date, module, data, updated_at) VALUES (?, ?, ?, ?)',
+        r.date, 'general', JSON.stringify(c.general), r.updated_at,
+      );
+    }
+    const cpsi = await database.getAllAsync<LegacyCpsiRow>('SELECT * FROM cpsi ORDER BY id');
+    for (const r of cpsi) {
+      const q = convertLegacyCpsi(r);
+      await database.runAsync(
+        'INSERT INTO questionnaire (code, date, answers, parts, total) VALUES (?, ?, ?, ?, ?)',
+        q.code, q.date, q.answers, q.parts, q.total,
+      );
+    }
+    // Quien ya usaba la app (v1) tenía el perfil de prostatitis.
+    if (daily.length > 0 || cpsi.length > 0) {
+      await database.runAsync(
+        "INSERT OR IGNORE INTO setting (key, value) VALUES ('profile', ?)",
+        JSON.stringify(['prostatitis']),
+      );
+    }
+  },
 ];
 
 async function applyKey(database: SQLite.SQLiteDatabase, hexKey: string) {
@@ -88,7 +147,9 @@ async function migrate(database: SQLite.SQLiteDatabase) {
     // withTransactionAsync usa ESTA conexión (ya tiene la llave). No usar
     // withExclusiveTransactionAsync: abre otra conexión sin la llave.
     await database.withTransactionAsync(async () => {
-      await database.execAsync(MIGRATIONS[version]);
+      const m = MIGRATIONS[version];
+      if (typeof m === 'string') await database.execAsync(m);
+      else await m(database);
       await database.execAsync(`PRAGMA user_version = ${next};`);
     });
     version = next;

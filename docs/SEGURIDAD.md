@@ -12,9 +12,9 @@ función no se puede hacer de forma segura, no se hace.
 |---|---------|--------------------|
 | A1 | Alguien ataca un servidor y roba los datos | **No hay servidor ni cuentas.** Los datos nunca salen del teléfono. |
 | A2 | La app se usa como puerta para entrar al resto del teléfono | Permisos mínimos (sección 3). Android aísla cada app; sin permisos no puede tocar otras apps ni archivos. |
-| A3 | Otra persona toma tu teléfono desbloqueado | Bloqueo con huella / PIN al abrir y al volver de segundo plano. |
+| A3 | Otra persona toma tu teléfono desbloqueado | Bloqueo opcional con huella / PIN (Ajustes). Por decisión del usuario viene apagado; los datos siguen cifrados. |
 | A4 | Alguien copia los archivos de la app (cable, respaldo, teléfono robado) | Base de datos **cifrada**; respaldo automático de Android **desactivado**. |
-| A5 | Capturas de pantalla o vista previa en "apps recientes" | Pantalla protegida: se bloquean capturas y la vista previa sale en blanco. |
+| A5 | Capturas de pantalla o vista previa en "apps recientes" | Interruptor en Ajustes para bloquearlas. Por decisión del usuario vienen permitidas. |
 | A6 | Interceptar la conexión a internet (wifi público) | Solo HTTPS, tráfico sin cifrar prohibido, lista cerrada de dominios. |
 | A7 | Contenido de internet con código malicioso | La información de MedlinePlus se muestra como **texto plano**, nunca como página web ejecutable. Sin WebView. |
 | A8 | Una librería de terceros comprometida | Pocas dependencias, versiones fijadas, revisión de vulnerabilidades en cada versión. |
@@ -63,19 +63,28 @@ inicializar no abre ninguna conexión. Los recordatorios son alarmas
 locales del teléfono. Su receptor expuesto está protegido por un permiso que
 solo tiene Google Play Services.
 
-## 4. Bloqueo de la app
+## 4. Bloqueo de la app (opcional)
 
 - `expo-local-authentication`: huella o, si no hay, el PIN/patrón del teléfono.
-- Se pide al abrir y al volver después de 1 minuto en segundo plano (configurable).
+  La app nunca ve la huella ni el PIN: Android solo le responde "sí" o "no".
+- Ajustes → "Pedir huella o PIN": **Nunca** (por defecto, a pedido del
+  usuario), **Al abrir**, **Tras 1 min** o **Tras 5 min** en segundo plano.
+- El cifrado de la base de datos **no depende** del bloqueo: la llave está en
+  el Android Keystore y los datos siguen cifrados aunque no se pida huella.
+  El bloqueo solo protege frente a alguien que tenga el teléfono desbloqueado.
 - Mientras está bloqueada no se muestra ningún dato.
 
 ## 5. Pantalla
 
 - `plugins/withSecureWindow.js` activa `FLAG_SECURE` en la ventana principal
-  desde que se crea (antes de mostrar cualquier dato), sin librerías ni permisos: no se pueden hacer capturas ni
-  grabar pantalla, y la vista en "apps recientes" aparece en blanco.
-- Excepción: si tú decides compartir el reporte PDF con tu médico, se genera
-  el archivo en ese momento.
+  desde que se crea, mientras la app arranca.
+- Después se aplica lo que elija el usuario en Ajustes → "Bloquear capturas de
+  pantalla" mediante un módulo nativo propio y mínimo
+  (`modules/secure-window`): solo pone o quita `FLAG_SECURE`, sin detectores de
+  capturas ni permisos. **Por defecto las capturas están permitidas** (pedido
+  del usuario, para poder mostrarle cosas al médico).
+- Activado: no se pueden hacer capturas ni grabar pantalla, y la vista en
+  "apps recientes" aparece en blanco.
 
 ## 6. Red (desde la versión 1.1)
 
@@ -100,28 +109,40 @@ solo tiene Google Play Services.
 - Pruebas: `tests/medlineplus.test.ts` (dominios permitidos, URL, conversión a
   texto, descarte de scripts y de enlaces ajenos).
 
-## 7. Respaldo (exportar / importar) — versión 3
+## 7. Respaldo (exportar / importar) — desde la versión 2.0
 
 - `android.allowBackup: false`: Android no copia los datos a la nube por su cuenta.
-- El respaldo manual es un archivo cifrado con una **contraseña que eliges tú**:
-  derivación de llave con **scrypt** y cifrado **AES-256-GCM** (librerías
-  auditadas `@noble/hashes` y `@noble/ciphers`).
-- Al importar se verifica la integridad; si el archivo fue alterado o la
-  contraseña es incorrecta, se rechaza sin tocar tus datos actuales.
+- El respaldo manual (Ajustes → Respaldo cifrado) es un archivo cifrado con una
+  **contraseña que eliges tú** (mínimo 8 caracteres): llave con **scrypt**
+  (N=2^15, r=8, p=1) y cifrado **AES-256-GCM** (librerías auditadas
+  `@noble/hashes` y `@noble/ciphers`). La cabecera va autenticada: si alguien
+  cambia los parámetros, se rechaza.
+- El archivo se entrega con el menú "Compartir" de Android (tú eliges dónde
+  guardarlo, p. ej. Drive) y la copia temporal se borra enseguida.
+- Al importar: se rechazan parámetros exagerados, se verifica la integridad y
+  se valida cada campo (`src/logic/backupData.ts`); todo se aplica en una sola
+  transacción: si algo falla, no cambia nada. La llave de cifrado y los ajustes
+  internos nunca van en el respaldo.
+- `expo-sharing` está configurado para **no** recibir archivos de otras apps
+  (sin filtros de intención). Lo verifica `scripts/verify_apk.py`.
+- Pruebas: `tests/backup.test.ts` (ida y vuelta, contraseña incorrecta,
+  alteraciones, datos malformados).
 - Importante: si olvidas esa contraseña, **nadie** puede recuperar el respaldo.
   Es a propósito.
 
 ## 8. Superficie expuesta a otras apps
 
-- Sin `scheme` ni enlaces profundos en la versión 1.
+- Sin `scheme` ni enlaces profundos.
 - Solo la actividad principal está exportada (la necesaria para el ícono).
 - Sin WebView, sin carga de código remoto, sin `eval`.
 - `expo-updates` **desactivado**: la app solo cambia cuando instalas un APK nuevo.
 
 ## 9. Cadena de suministro (librerías)
 
-- Solo librerías oficiales de Expo más `@noble/*` y una de gráficas; cada nueva
-  dependencia se justifica.
+- Solo librerías oficiales de Expo (incluidas `expo-file-system`,
+  `expo-sharing` y `expo-document-picker` para el respaldo) más `@noble/*`
+  (criptografía auditada, JavaScript puro). Los gráficos se dibujan sin
+  librerías. Cada nueva dependencia se justifica.
 - `package-lock.json` versionado y versiones fijas.
 - `npm audit` sin vulnerabilidades altas o críticas antes de cada versión.
 
@@ -147,6 +168,11 @@ Automático en cada compilación (`.github/workflows/android.yml`):
   `allowBackup` activo, tráfico sin cifrar, APK depurable o un componente
   expuesto a otras apps sin protección.
 - Las acciones de GitHub están fijadas por hash de commit.
+- `scripts/smoke_test.sh` en un emulador Android 14: instala la versión
+  publicada anterior, registra un día, **actualiza** y comprueba que el dato
+  sigue ahí; luego prueba una instalación nueva (sin huella por defecto, solo
+  lo del perfil, teclado, capturas y su bloqueo, MedlinePlus). Sin esta prueba
+  en verde no se publica.
 
 Manual, en cada etapa, antes de entregar el APK:
 

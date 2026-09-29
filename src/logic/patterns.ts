@@ -1,7 +1,7 @@
 // Busca asociaciones simples entre lo que registraste y tu dolor.
 // Solo muestra diferencias con suficientes datos. Es una pista, no una prueba.
 
-import type { Item } from './catalog.ts';
+import type { Item } from '../modules/types.ts';
 import { addDays } from './dates.ts';
 
 export type DayRecord = {
@@ -65,4 +65,15 @@ export function findPatterns(records: DayRecord[], triggers: Item[], reliefs: It
     if (p && p.diff < 0) result.push(p);
   }
   return result.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+}
+
+// Compara un valor el MISMO día según una condición (p. ej. dolor de cabeza
+// los días con 4 horas o más de laptop frente a los demás días).
+export function compareSameDay(
+  rows: { value: number; has: boolean }[],
+): { withAvg: number; withoutAvg: number; withCount: number; withoutCount: number } | null {
+  const withV = rows.filter((r) => r.has).map((r) => r.value);
+  const withoutV = rows.filter((r) => !r.has).map((r) => r.value);
+  if (withV.length < MIN_SAMPLES || withoutV.length < MIN_SAMPLES) return null;
+  return { withAvg: avg(withV), withoutAvg: avg(withoutV), withCount: withV.length, withoutCount: withoutV.length };
 }

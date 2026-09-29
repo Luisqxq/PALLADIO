@@ -1,5 +1,6 @@
-// Bloquea la app con huella o con el PIN/patrón del teléfono.
-// Se pide al abrir y al volver después de estar en segundo plano.
+// Bloquea la app con huella o con el PIN/patrón del teléfono, según lo que
+// elija el usuario en Ajustes. Por defecto no se pide (pendiente #1): los datos
+// siguen cifrados igual.
 
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -7,7 +8,16 @@ import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/components.tsx';
 import { colors, space } from '../ui/theme.ts';
 
-export const DEFAULT_LOCK_AFTER_MS = 60_000;
+// 'never': nunca; 'open': solo al abrir la app; número: al abrir y al volver
+// después de esos milisegundos en segundo plano.
+export type LockMode = 'never' | 'open' | number;
+export const DEFAULT_LOCK_MODE: LockMode = 'never';
+
+export function parseLockMode(v: string | null): LockMode {
+  if (v === 'open' || v === 'never') return v;
+  const n = Number(v);
+  return v !== null && Number.isFinite(n) && n >= 0 ? n : DEFAULT_LOCK_MODE;
+}
 
 // Los diálogos del sistema (por ejemplo, el permiso de notificaciones) mandan
 // la app a segundo plano un momento. Mientras duran, no se bloquea.
@@ -21,10 +31,10 @@ export async function withSystemDialog<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-type Props = { children: ReactNode; lockAfterMs: number };
+type Props = { children: ReactNode; mode: LockMode };
 
-export function LockGate({ children, lockAfterMs }: Props) {
-  const [unlocked, setUnlocked] = useState(false);
+export function LockGate({ children, mode }: Props) {
+  const [unlocked, setUnlocked] = useState(mode === 'never');
   const [message, setMessage] = useState<string | null>(null);
   const authenticating = useRef(false);
   const backgroundedAt = useRef<number | null>(null);
@@ -60,8 +70,10 @@ export function LockGate({ children, lockAfterMs }: Props) {
   }, []);
 
   useEffect(() => {
-    authenticate();
-  }, [authenticate]);
+    if (mode === 'never') setUnlocked(true);
+    else if (!unlocked) authenticate();
+    // Solo al montar o si cambia el modo.
+  }, [mode]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -75,14 +87,14 @@ export function LockGate({ children, lockAfterMs }: Props) {
       } else if (state === 'active' && backgroundedAt.current !== null) {
         const away = Date.now() - backgroundedAt.current;
         backgroundedAt.current = null;
-        if (away >= lockAfterMs) {
+        if (typeof mode === 'number' && away >= mode) {
           setUnlocked(false);
           authenticate();
         }
       }
     });
     return () => sub.remove();
-  }, [authenticate, lockAfterMs]);
+  }, [authenticate, mode]);
 
   if (unlocked) return <>{children}</>;
 

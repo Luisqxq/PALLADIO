@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { getCachedSearch, listCachedTerms, saveCachedSearch, setSetting } from '../db/repo.ts';
 import { isAllowedTopicUrl, MAX_TERM_LENGTH, normalizeTerm, SUGGESTED_TOPICS, type MedlineTopic } from '../logic/medlineplus.ts';
 import { isMedlineEnabled, MEDLINE_SETTING, searchMedlinePlus } from '../net/medlineplus.ts';
 import { Banner, Body, Button, Card, Chip, Subtitle } from '../ui/components.tsx';
+import { Input } from '../ui/keyboard.tsx';
 import { colors, space } from '../ui/theme.ts';
+
+const capitalize = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 }
 
-export function MedlinePlusSection() {
+export function MedlinePlusSection({ suggested }: { suggested: string[] }) {
+  const topics = suggested.length ? suggested : SUGGESTED_TOPICS;
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [term, setTerm] = useState('');
   const [results, setResults] = useState<MedlineTopic[] | null>(null);
@@ -90,7 +94,7 @@ export function MedlinePlusSection() {
             <View style={{ height: space.md }} />
             <Body muted>Búsquedas guardadas (se leen sin internet):</Body>
             <View style={styles.chips}>
-              {recent.map((r) => <Chip key={r} label={r} selected={false} onPress={() => showCached(r)} />)}
+              {recent.map((r) => <Chip key={r} label={capitalize(r)} selected={false} onPress={() => showCached(r)} />)}
             </View>
           </>
         )}
@@ -105,7 +109,7 @@ export function MedlinePlusSection() {
         <Subtitle>📚 MedlinePlus</Subtitle>
         <Body muted>Información de la Biblioteca Nacional de Medicina de EE. UU. Solo se envía el tema que buscas.</Body>
         <View style={styles.searchRow}>
-          <TextInput
+          <Input
             style={styles.input}
             value={term}
             onChangeText={setTerm}
@@ -119,14 +123,14 @@ export function MedlinePlusSection() {
         </View>
         <Button label="Buscar" disabled={loading || !normalizeTerm(term)} onPress={() => search(term)} />
         <View style={styles.chips}>
-          {SUGGESTED_TOPICS.map((t) => <Chip key={t} label={t} selected={false} onPress={() => search(t)} />)}
+          {topics.map((t) => <Chip key={t} label={t} selected={false} onPress={() => search(t)} />)}
         </View>
         {recent.length > 0 && (
           <>
             <View style={{ height: space.sm }} />
             <Body muted>Guardadas en tu teléfono:</Body>
             <View style={styles.chips}>
-              {recent.map((r) => <Chip key={r} label={r} selected={false} onPress={() => showCached(r)} />)}
+              {recent.map((r) => <Chip key={r} label={capitalize(r)} selected={false} onPress={() => showCached(r)} />)}
             </View>
           </>
         )}
@@ -151,7 +155,7 @@ function Results({
   if (results.length === 0) {
     return (
       <Card>
-        <Body muted>No se encontraron temas para "{term}". Prueba con otras palabras.</Body>
+        <Body muted>No se encontraron temas para "{capitalize(term)}". Prueba con otras palabras.</Body>
       </Card>
     );
   }

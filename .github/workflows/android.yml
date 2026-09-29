@@ -125,7 +125,7 @@ jobs:
     # base de datos cifrada funciona y que las capturas salen en negro.
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,6 +134,15 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: apk
+
+      - name: Descargar la versión publicada anterior (para probar la actualización)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p prev
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir prev \
+            || echo "No hay una versión publicada anterior."
+          ls -la prev
 
       - name: Habilitar aceleración del emulador (KVM)
         run: |
@@ -150,7 +159,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -camera-back none -camera-front none
-          script: bash scripts/smoke_test.sh "$(ls *.apk | head -1)"
+          script: bash scripts/smoke_test.sh "$(ls *.apk | head -1)" "$(ls prev/*.apk 2>/dev/null | head -1)"
 
       - name: Guardar evidencia si falla
         if: failure()

@@ -27,7 +27,9 @@ Run lint and typecheck before declaring any task done.
 
 - Security comes first. Read `docs/SEGURIDAD.md` before changing permissions, storage, networking or dependencies. Every new dependency must be justified.
 - No navigation library on purpose (no Expo Router): it would add a deep-link scheme. Tabs are plain state in `App.tsx`; screens live in `src/screens/`.
-- All data goes through `src/db/repo.ts` with parameterized queries. The database is SQLCipher-encrypted (`src/db/database.ts`).
+- All data goes through `src/db/repo.ts` with parameterized queries. The database is SQLCipher-encrypted (`src/db/database.ts`). Schema changes are new entries in `MIGRATIONS` (never edit old ones); existing users' data must survive (CI upgrade test).
+- Health conditions are declarative modules in `src/modules/` (fields, red flags, triggers, reliefs, questionnaire). Each user picks their conditions (profile) and only sees those. Daily data is `day_entry(date, module, data JSON)`, plus a `general` row.
+- Screen capture blocking is a runtime toggle via the local native module `modules/secure-window` (FLAG_SECURE only).
 - Pure logic lives in `src/logic/` and is tested with `npm test` (Node test runner, `.ts` import extensions).
 - User-facing text is Spanish (Peru).
 - Android permissions are allow-listed in `app.json` and enforced on the built APK by `scripts/verify_apk.py` in CI.

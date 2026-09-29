@@ -1,57 +1,100 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
-  getDailyLog, listDailyLogs, listIntakes, listMedications, saveDailyLog, setIntake,
-  type DailyLog, type Intake, type IntakeStatus, type Medication,
+  getDayEntries, listDayEntries, listIntakes, listMedications, saveDayEntries, setIntake,
+  type DayEntries, type Intake, type IntakeStatus, type Medication,
 } from '../db/repo.ts';
-import { EMERGENCIAS_PERU, evaluateFlags, RED_FLAGS, sustainedHighPain } from '../logic/alerts.ts';
-import { PAIN_LOCATIONS, RELIEFS, TRIGGERS, URINARY_SYMPTOMS } from '../logic/catalog.ts';
+import { EMERGENCIAS_PERU, sustainedHighPain } from '../logic/alerts.ts';
+import { analgesicDays } from '../logic/ciclo.ts';
 import { addDays, formatShort, today } from '../logic/dates.ts';
-import { Banner, Body, Button, Card, ChipGroup, ScaleSelector, Stepper, Subtitle, Title } from '../ui/components.tsx';
+import { evaluateFlags, modulesFor, redFlagsFor, reliefsFor, triggersFor } from '../modules/index.ts';
+import type { ConditionId, EntryData, EntryValue, ModuleDef } from '../modules/types.ts';
+import { Banner, Body, Button, Card, ChipGroup, Subtitle, Title } from '../ui/components.tsx';
+import { FieldInput } from '../ui/FieldInput.tsx';
+import { Input } from '../ui/keyboard.tsx';
 import { colors, space } from '../ui/theme.ts';
 
-const empty = (date: string): DailyLog => ({
-  date, pain: 0, locations: [], urinary: [], nocturia: 0, triggers: [], reliefs: [], flags: [], notes: '',
-});
+const asList = (v: EntryValue | undefined): string[] => (Array.isArray(v) ? v : []);
 
 function toggle(list: string[], id: string): string[] {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 }
 
-export function HoyScreen() {
+type Warning = { key: string; text: string };
+
+export function HoyScreen({ profile }: { profile: ConditionId[] }) {
+  const modules = modulesFor(profile);
   const [date, setDate] = useState(today());
-  const [log, setLog] = useState<DailyLog>(empty(date));
-  const [painSet, setPainSet] = useState(false);
+  const [entries, setEntries] = useState<DayEntries>({});
   const [saved, setSaved] = useState(false);
-  const [highPainStreak, setHighPainStreak] = useState(false);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [warnings, setWarnings] = useState<Warning[]>([]);
   const [meds, setMeds] = useState<Medication[]>([]);
   const [intakes, setIntakes] = useState<Intake[]>([]);
 
+  const computeWarnings = useCallback(async () => {
+    const recent = await listDayEntries(addDays(today(), -29));
+    const list: Warning[] = [];
+    for (const m of modules) {
+      const last3 = recent
+        .filter((r) => r.date > addDays(today(), -3))
+        .map((r) => r.entries[m.id]?.[m.main.id])
+        .filter((v): v is number => typeof v === 'number');
+      if (sustainedHighPain(last3)) {
+        list.push({ key: `alto-${m.id}`, text: `${m.main.short}: 3 días seguidos en 7 o más. Te recomendamos pedir una cita con tu médico.` });
+      }
+    }
+    if (profile.includes('cefalea')) {
+      const days = analgesicDays(
+        recent.map((r) => ({ date: r.date, otros: asList(r.entries.cefalea?.otros) })),
+        today(),
+      );
+      if (days >= 10) {
+        list.push({
+          key: 'analgesicos',
+          text: `Tomaste analgésicos ${days} de los últimos 30 días. Usarlos 10 días o más al mes puede causar más dolor de cabeza (cefalea por abuso de medicamentos). Coméntalo con tu médico.`,
+        });
+      }
+    }
+    setWarnings(list);
+  }, [modules, profile]);
+
   const load = useCallback(async () => {
-    const existing = await getDailyLog(date);
-    setLog(existing ?? empty(date));
-    setPainSet(!!existing);
-    setSaved(!!existing);
+    setEntries(await getDayEntries(date));
+    setSaved(false);
     setMeds(await listMedications());
     setIntakes(await listIntakes(date));
-    const recent = await listDailyLogs(addDays(today(), -2));
-    setHighPainStreak(sustainedHighPain(recent.map((r) => r.pain)));
-  }, [date]);
+    await computeWarnings();
+  }, [date, computeWarnings]);
 
   useEffect(() => {
     load();
-  }, [load]);
+    // Solo al cambiar de fecha o de perfil (load cambia en cada render).
+  }, [date, profile.join(',')]);
 
-  const update = (patch: Partial<DailyLog>) => {
-    setLog((l) => ({ ...l, ...patch }));
+  const setField = (module: string, id: string, value: EntryValue | undefined) => {
+    setEntries((prev) => {
+      const data: EntryData = { ...(prev[module] ?? {}) };
+      if (value === undefined) delete data[id];
+      else data[id] = value;
+      return { ...prev, [module]: data };
+    });
     setSaved(false);
   };
 
+  const general = entries.general ?? {};
+  const missing = modules.filter((m) => typeof entries[m.id]?.[m.main.id] !== 'number');
+  const hasAny = modules.length === 0
+    ? Object.keys(general).length > 0
+    : missing.length < modules.length;
+
   const save = async () => {
-    await saveDailyLog(log);
+    // Solo se guardan los módulos del perfil y la parte general.
+    const toSave: DayEntries = { general };
+    for (const m of modules) if (entries[m.id]) toSave[m.id] = entries[m.id];
+    await saveDayEntries(date, toSave);
     setSaved(true);
-    const recent = await listDailyLogs(addDays(today(), -2));
-    setHighPainStreak(sustainedHighPain(recent.map((r) => r.pain)));
+    await computeWarnings();
   };
 
   const markIntake = async (medicationId: number, slot: string, status: IntakeStatus) => {
@@ -61,7 +104,7 @@ export function HoyScreen() {
     setIntakes(await listIntakes(date));
   };
 
-  const flags = evaluateFlags(log.flags);
+  const flags = evaluateFlags(asList(general.flags), redFlagsFor(profile));
   const isToday = date === today();
 
   return (
@@ -74,10 +117,8 @@ export function HoyScreen() {
 
       {flags.urgent.length > 0 && (
         <Banner kind="danger">
-          {flags.urgent.map((f) => (
-            <Body key={f.id}>⚠️ {f.advice}</Body>
-          ))}
-          <View style={styles.phones}>
+          {flags.urgent.map((f) => <Body key={f.id}>⚠️ {f.advice}</Body>)}
+          <View style={{ marginTop: space.sm }}>
             {EMERGENCIAS_PERU.map((e) => (
               <Button key={e.phone} kind="danger" label={`Llamar ${e.label}: ${e.phone}`} onPress={() => Linking.openURL(`tel:${e.phone}`)} />
             ))}
@@ -86,20 +127,16 @@ export function HoyScreen() {
       )}
       {flags.soon.length > 0 && (
         <Banner kind="warn">
-          {flags.soon.map((f) => (
-            <Body key={f.id}>• {f.advice}</Body>
-          ))}
+          {flags.soon.map((f) => <Body key={f.id}>• {f.advice}</Body>)}
         </Banner>
       )}
-      {highPainStreak && (
-        <Banner kind="warn">
-          <Body>Llevas 3 días seguidos con dolor de 7 o más. Te recomendamos pedir una cita con tu urólogo.</Body>
-        </Banner>
-      )}
+      {isToday && warnings.map((w) => (
+        <Banner key={w.key} kind="warn"><Body>{w.text}</Body></Banner>
+      ))}
 
       {meds.length > 0 && (
         <Card>
-          <Subtitle>Medicamentos</Subtitle>
+          <Subtitle>💊 Medicamentos</Subtitle>
           {meds.flatMap((m) =>
             (m.times.length ? m.times : ['—']).map((slot) => {
               const status = intakes.find((i) => i.medicationId === m.id && i.slot === slot)?.status;
@@ -130,69 +167,90 @@ export function HoyScreen() {
         </Card>
       )}
 
-      <Card>
-        <Subtitle>¿Cuánto dolor sentiste {isToday ? 'hoy' : 'ese día'}?</Subtitle>
-        <Body muted>0 = nada · 10 = el peor imaginable</Body>
-        <View style={{ height: space.sm }} />
-        <ScaleSelector value={painSet ? log.pain : null} onChange={(v) => { setPainSet(true); update({ pain: v }); }} />
-      </Card>
-
-      <Card>
-        <Subtitle>¿Dónde?</Subtitle>
-        <ChipGroup items={PAIN_LOCATIONS} selected={log.locations} onToggle={(id) => update({ locations: toggle(log.locations, id) })} />
-      </Card>
-
-      <Card>
-        <Subtitle>Al orinar</Subtitle>
-        <ChipGroup items={URINARY_SYMPTOMS} selected={log.urinary} onToggle={(id) => update({ urinary: toggle(log.urinary, id) })} />
-        <View style={{ height: space.md }} />
-        <Body>¿Cuántas veces te levantaste de noche a orinar?</Body>
-        <View style={{ height: space.sm }} />
-        <Stepper value={log.nocturia} onChange={(v) => update({ nocturia: v })} />
-      </Card>
+      {modules.map((m) => (
+        <ModuleCard
+          key={m.id}
+          module={m}
+          data={entries[m.id] ?? {}}
+          open={!!open[m.id]}
+          onToggleOpen={() => setOpen((o) => ({ ...o, [m.id]: !o[m.id] }))}
+          onChange={(id, v) => setField(m.id, id, v)}
+        />
+      ))}
 
       <Card>
         <Subtitle>¿Qué hubo en el día?</Subtitle>
         <Body muted>Sirve para descubrir qué te empeora.</Body>
         <View style={{ height: space.sm }} />
-        <ChipGroup items={TRIGGERS} selected={log.triggers} onToggle={(id) => update({ triggers: toggle(log.triggers, id) })} />
+        <ChipGroup items={triggersFor(profile)} selected={asList(general.triggers)}
+          onToggle={(id) => setField('general', 'triggers', toggle(asList(general.triggers), id))} />
       </Card>
 
       <Card>
         <Subtitle>¿Qué hiciste para sentirte mejor?</Subtitle>
-        <ChipGroup items={RELIEFS} selected={log.reliefs} onToggle={(id) => update({ reliefs: toggle(log.reliefs, id) })} />
+        <ChipGroup items={reliefsFor(profile)} selected={asList(general.reliefs)}
+          onToggle={(id) => setField('general', 'reliefs', toggle(asList(general.reliefs), id))} />
       </Card>
 
-      <Card>
-        <Subtitle>Señales de alarma</Subtitle>
-        <Body muted>Marca solo si te pasó.</Body>
-        <View style={{ height: space.sm }} />
-        <ChipGroup items={RED_FLAGS} selected={log.flags} onToggle={(id) => update({ flags: toggle(log.flags, id) })} />
-      </Card>
+      {modules.length > 0 && (
+        <Card>
+          <Subtitle>Señales de alarma</Subtitle>
+          <Body muted>Marca solo si te pasó.</Body>
+          <View style={{ height: space.sm }} />
+          <ChipGroup items={redFlagsFor(profile)} selected={asList(general.flags)}
+            onToggle={(id) => setField('general', 'flags', toggle(asList(general.flags), id))} />
+        </Card>
+      )}
 
       <Card>
         <Subtitle>¿Cómo te sentiste?</Subtitle>
-        <TextInput
+        <Input
           style={styles.notes}
           multiline
           maxLength={2000}
           placeholder="Anota lo que quieras: sensaciones, lo que comiste, cómo dormiste…"
           placeholderTextColor={colors.muted}
-          value={log.notes}
-          onChangeText={(t) => update({ notes: t })}
+          value={typeof general.notes === 'string' ? general.notes : ''}
+          onChangeText={(t) => setField('general', 'notes', t)}
           autoCorrect
         />
       </Card>
 
-      <Button label={saved ? 'Guardado ✓' : 'Guardar registro'} disabled={!painSet || saved} onPress={save} />
-      {!painSet && <Text style={styles.hint}>Elige tu nivel de dolor para poder guardar.</Text>}
+      <Button label={saved ? 'Guardado ✓' : 'Guardar registro'} disabled={!hasAny || saved} onPress={save} />
+      {missing.length > 0 && missing.length < modules.length && (
+        <Text style={styles.hint}>Sin marcar: {missing.map((m) => m.main.short).join(', ')}. Puedes guardar igual.</Text>
+      )}
+      {!hasAny && <Text style={styles.hint}>Marca al menos un valor para poder guardar.</Text>}
     </View>
+  );
+}
+
+function ModuleCard({
+  module, data, open, onToggleOpen, onChange,
+}: {
+  module: ModuleDef; data: EntryData; open: boolean;
+  onToggleOpen: () => void; onChange: (id: string, v: EntryValue | undefined) => void;
+}) {
+  return (
+    <Card>
+      <Subtitle>{module.emoji} {module.name}</Subtitle>
+      {module.fields.map((f) => (
+        <FieldInput key={f.id} field={f} value={data[f.id]} onChange={(v) => onChange(f.id, v)} />
+      ))}
+      {module.details.length > 0 && (
+        <Pressable onPress={onToggleOpen} accessibilityRole="button">
+          <Text style={styles.more}>{open ? 'Menos detalles ▲' : 'Más detalles ▼'}</Text>
+        </Pressable>
+      )}
+      {open && module.details.map((f) => (
+        <FieldInput key={f.id} field={f} value={data[f.id]} onChange={(v) => onChange(f.id, v)} />
+      ))}
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
   dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.md },
-  phones: { marginTop: space.sm },
   medRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm, borderTopWidth: 1, borderTopColor: colors.border },
   medName: { fontSize: 15, fontWeight: '600', color: colors.text },
   medInfo: { fontSize: 13, color: colors.muted },
@@ -204,5 +262,6 @@ const styles = StyleSheet.create({
     minHeight: 90, borderWidth: 1, borderColor: colors.border, borderRadius: 10,
     padding: space.md, fontSize: 15, color: colors.text, textAlignVertical: 'top',
   },
+  more: { color: colors.primary, fontWeight: '600', paddingVertical: space.sm },
   hint: { textAlign: 'center', color: colors.muted, marginTop: space.sm },
 });
