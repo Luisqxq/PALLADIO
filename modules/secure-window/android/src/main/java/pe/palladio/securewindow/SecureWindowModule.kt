@@ -15,7 +15,7 @@ class SecureWindowModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("SecureWindow")
 
-    AsyncFunction<Unit>("setSecure") { secure: Boolean ->
+    AsyncFunction("setSecure") { secure: Boolean ->
       val window = currentActivity.window
       if (secure) {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
